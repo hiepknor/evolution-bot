@@ -1,0 +1,48 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 205 20% 8%;
+  --foreground: 200 25% 94%;
+  --card: 210 17% 12%;
+  --panel: 210 17% 12%;
+  --panel-2: 210 16% 14%;
+  --card-foreground: 210 12% 95%;
+  --popover: 210 17% 12%;
+  --popover-foreground: 210 12% 95%;
+  --primary: 189 96% 41%;
+  --primary-foreground: 200 100% 97%;
+  --secondary: 208 14% 20%;
+  --secondary-foreground: 210 12% 95%;
+  --muted: 210 12% 18%;
+  --muted-foreground: 215 12% 64%;
+  --accent: 186 70% 22%;
+  --accent-foreground: 200 90% 96%;
+  --destructive: 2 76% 55%;
+  --border: 210 10% 28%;
+  --border-soft: 210 10% 24%;
+  --input: 210 10% 28%;
+  --ring: 189 96% 41%;
+  --success: 148 58% 48%;
+  --warning: 38 92% 56%;
+  --text-strong: 200 25% 98%;
+  --text-muted-2: 215 10% 72%;
+  --radius: 0.6rem;
+}
+
+* {
+  @apply border-border;
+}
+
+body {
+  @apply m-0 bg-background text-foreground antialiased;
+  font-family: 'IBM Plex Sans', 'SF Pro Display', 'Segoe UI', sans-serif;
+  background-image:
+    radial-gradient(circle at 20% 15%, rgba(7, 125, 134, 0.16), transparent 25%),
+    radial-gradient(circle at 85% 85%, rgba(11, 68, 117, 0.22), transparent 35%);
+}
+
+#root {
+  @apply h-screen;
+}

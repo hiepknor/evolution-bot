@@ -1,0 +1,58 @@
+name: Build Desktop Installers
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            artifact_name: macos-bundle
+            bundle_dirs: |
+              src-tauri/target/release/bundle/macos
+              src-tauri/target/release/bundle/dmg
+          - os: windows-latest
+            artifact_name: windows-bundle
+            bundle_dirs: |
+              src-tauri/target/release/bundle/nsis
+              src-tauri/target/release/bundle/msi
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build desktop bundle
+        shell: bash
+        run: |
+          if [[ "${{ matrix.os }}" == "macos-14" ]]; then
+            npm run tauri:build -- --ci || npm run tauri:build -- --ci --bundles app
+          else
+            npm run tauri:build -- --ci
+          fi
+
+      - name: Upload bundle artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          if-no-files-found: error
+          path: ${{ matrix.bundle_dirs }}

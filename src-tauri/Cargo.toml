@@ -1,0 +1,27 @@
+[package]
+name = "evo-broadcast-control"
+version = "1.0.0"
+description = "Evo Broadcast Control"
+authors = ["you"]
+license = "MIT"
+repository = ""
+edition = "2021"
+rust-version = "1.77"
+
+[build-dependencies]
+tauri-build = { version = "2.0.0", features = [] }
+
+[dependencies]
+serde_json = "1"
+serde = { version = "1", features = ["derive"] }
+log = "0.4"
+tauri = { version = "2.0.0", features = [] }
+tauri-plugin-dialog = "2.0.0"
+tauri-plugin-fs = "2.0.0"
+tauri-plugin-http = "2.5.8"
+tauri-plugin-shell = "2.0.0"
+tauri-plugin-sql = { version = "2.0.0", features = ["sqlite"] }
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]

@@ -1,0 +1,14 @@
+[
+  {
+    "jid": "120363099999999@g.us",
+    "subject": "Sales Team",
+    "size": 24,
+    "isGroup": true
+  },
+  {
+    "id": "120363088888888@g.us",
+    "name": "Operations",
+    "participants": [{}, {}, {}],
+    "isGroup": true
+  }
+]
