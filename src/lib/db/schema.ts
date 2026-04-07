@@ -62,6 +62,12 @@ export const MIGRATIONS: string[] = [
     created_at TEXT NOT NULL,
     FOREIGN KEY (campaign_id) REFERENCES campaigns(id)
   );`,
+  `CREATE TABLE IF NOT EXISTS campaign_preferences (
+    id TEXT PRIMARY KEY,
+    config_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );`,
   `CREATE INDEX IF NOT EXISTS idx_groups_cache_chat_id ON groups_cache(chat_id);`,
   `CREATE INDEX IF NOT EXISTS idx_campaign_targets_campaign_id ON campaign_targets(campaign_id);`,
   `CREATE INDEX IF NOT EXISTS idx_campaign_logs_campaign_id ON campaign_logs(campaign_id);`

@@ -4,7 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { writeTextFile } from '@tauri-apps/plugin-fs';
 import { save } from '@tauri-apps/plugin-dialog';
 import { BroadcastQueue } from '@/lib/queue/broadcast-queue';
-import { campaignsRepo, logsRepo, targetsRepo } from '@/lib/db/repositories';
+import { campaignPreferencesRepo, campaignsRepo, logsRepo, targetsRepo } from '@/lib/db/repositories';
 import { buildCampaignChecksum } from '@/lib/utils/checksum';
 import { campaignTargetsToCsv } from '@/lib/utils/csv';
 import { createProvider } from '@/lib/providers/provider-factory';
@@ -50,6 +50,51 @@ const campaignToProgress = (campaign: Campaign): QueueProgress => {
 
 const transientTargetStatuses = new Set<TargetStatus>(['pending', 'running']);
 
+const toNonNegativeInt = (value: unknown, fallback: number): number => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.max(0, Math.floor(value));
+};
+
+const toMinInt = (value: unknown, fallback: number, min: number): number => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.max(min, Math.floor(value));
+};
+
+const toStringArray = (value: unknown, fallback: string[]): string[] => {
+  if (!Array.isArray(value)) {
+    return fallback;
+  }
+  return value
+    .map((item) => (typeof item === 'string' ? item.trim() : ''))
+    .filter(Boolean);
+};
+
+const sanitizeCampaignConfig = (
+  input: Partial<CampaignConfig> | null | undefined,
+  fallback: CampaignConfig
+): CampaignConfig => {
+  const source = input ?? {};
+  const randomDelayMinMs = toNonNegativeInt(source.randomDelayMinMs, fallback.randomDelayMinMs);
+  const randomDelayMaxRaw = toNonNegativeInt(source.randomDelayMaxMs, fallback.randomDelayMaxMs);
+  const randomDelayMaxMs = Math.max(randomDelayMaxRaw, randomDelayMinMs);
+
+  return {
+    randomDelayMinMs,
+    randomDelayMaxMs,
+    pauseEvery: toNonNegativeInt(source.pauseEvery, fallback.pauseEvery),
+    pauseDurationMs: toNonNegativeInt(source.pauseDurationMs, fallback.pauseDurationMs),
+    maxAttempts: toMinInt(source.maxAttempts, fallback.maxAttempts, 1),
+    blacklist: toStringArray(source.blacklist, fallback.blacklist),
+    whitelistMode:
+      typeof source.whitelistMode === 'boolean' ? source.whitelistMode : fallback.whitelistMode,
+    warningThreshold: toNonNegativeInt(source.warningThreshold, fallback.warningThreshold)
+  };
+};
+
 interface CampaignStore {
   activeCampaign?: Campaign;
   queueProgress?: QueueProgress;
@@ -65,6 +110,7 @@ interface CampaignStore {
   duplicateWarning: string | null;
   queue?: BroadcastQueue;
   config: CampaignConfig;
+  loadConfig: () => Promise<void>;
   loadHistory: () => Promise<void>;
   restoreLatestCampaign: () => Promise<void>;
   previewDuplicateWarning: (input: {
@@ -106,6 +152,18 @@ export const useCampaignStore = create<CampaignStore>((set, get) => ({
   duplicateWarning: null,
   queue: undefined,
   config: defaultConfig,
+
+  loadConfig: async () => {
+    try {
+      const persistedConfig = await campaignPreferencesRepo.get();
+      if (!persistedConfig) {
+        return;
+      }
+      set({ config: sanitizeCampaignConfig(persistedConfig, defaultConfig) });
+    } catch (error) {
+      console.error('Failed to load campaign preferences', error);
+    }
+  },
 
   loadHistory: async () => {
     set({ historyLoading: true, historyError: null });
@@ -180,7 +238,16 @@ export const useCampaignStore = create<CampaignStore>((set, get) => ({
     return { warning };
   },
 
-  setConfig: (config) => set({ config: { ...get().config, ...config } }),
+  setConfig: (config) => {
+    const nextConfig = sanitizeCampaignConfig(
+      { ...get().config, ...config },
+      defaultConfig
+    );
+    set({ config: nextConfig });
+    void campaignPreferencesRepo.upsert(nextConfig).catch((error) => {
+      console.error('Failed to save campaign preferences', error);
+    });
+  },
 
   startCampaign: async ({ settings, groups, selectedIds, composer, dryRun, name }) => {
     if (get().running || get().stopping || get().queue) {

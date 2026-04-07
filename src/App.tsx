@@ -14,6 +14,7 @@ import { useCampaignStore } from '@/stores/use-campaign-store';
 export default function App(): JSX.Element {
   const loadSettings = useSettingsStore((state) => state.load);
   const loadGroups = useGroupsStore((state) => state.loadCached);
+  const loadCampaignConfig = useCampaignStore((state) => state.loadConfig);
   const loadHistory = useCampaignStore((state) => state.loadHistory);
   const restoreLatestCampaign = useCampaignStore((state) => state.restoreLatestCampaign);
   const screenFlag = useScreenFlag();
@@ -23,7 +24,7 @@ export default function App(): JSX.Element {
       try {
         await initDb();
         await campaignsRepo.recoverInterrupted();
-        await Promise.all([loadSettings(), loadGroups(), loadHistory()]);
+        await Promise.all([loadSettings(), loadGroups(), loadHistory(), loadCampaignConfig()]);
         await restoreLatestCampaign();
       } catch (error) {
         // Keep UI alive even if local DB init fails.
@@ -33,7 +34,7 @@ export default function App(): JSX.Element {
     };
 
     void boot();
-  }, [loadGroups, loadHistory, loadSettings, restoreLatestCampaign]);
+  }, [loadCampaignConfig, loadGroups, loadHistory, loadSettings, restoreLatestCampaign]);
 
   return (
     <AppErrorBoundary>
