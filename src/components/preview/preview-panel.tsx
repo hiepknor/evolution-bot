@@ -115,8 +115,9 @@ export function PreviewPanel(): JSX.Element {
       rand_tag: buildPreviewRandomTag(selectedGroup?.chatId ?? 'preview')
     }
   });
-  const hasContent = Boolean(rendered.trim() || composer.plainTextFallback.trim());
-  const charCount = (rendered || composer.plainTextFallback || '').trim().length;
+  const previewMessage = (rendered || composer.plainTextFallback || '').trim();
+  const hasContent = previewMessage.length > 0;
+  const charCount = previewMessage.length;
   const selectedGroupLabel = selectedGroup
     ? `${selectedGroup.name} (${formatChatId(selectedGroup.chatId)})`
     : 'Chưa chọn nhóm (đang dùng preview giả lập)';
@@ -195,11 +196,19 @@ export function PreviewPanel(): JSX.Element {
 
           <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-md border border-border/55 bg-muted/10 p-3">
             <div className="mb-2 text-xs font-medium text-muted-foreground">Tin nhắn mô phỏng</div>
-            <div className="min-h-0 flex-1 overflow-auto rounded-md bg-background/30 p-2">
-              <div className="h-full">
+            <div className="min-h-0 flex-1 overflow-auto rounded-xl border border-border/45 bg-background/30 p-2.5 sm:p-3">
+              <div className="flex min-h-full flex-col justify-start">
                 {hasContent ? (
-                  <div className="max-w-[85%] whitespace-pre-wrap break-words rounded-xl border border-primary/30 bg-primary/10 px-3 py-2 text-xs leading-relaxed text-foreground">
-                    {rendered || composer.plainTextFallback}
+                  <div className="w-full max-w-[min(100%,540px)] rounded-[20px] rounded-bl-md border border-primary/35 bg-accent/35 px-3.5 py-3 shadow-[0_10px_30px_-22px_hsl(var(--primary))]">
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <span className="truncate text-[11px] font-semibold tracking-wide text-primary">
+                        Preview Broadcast
+                      </span>
+                      <span className="text-[10px] text-muted-foreground">{charCount} ký tự</span>
+                    </div>
+                    <p className="whitespace-pre-line break-words text-[13px] leading-6 text-foreground sm:text-sm">
+                      {previewMessage}
+                    </p>
                   </div>
                 ) : (
                   <div className="flex h-full min-h-0 flex-col items-center justify-center gap-2 text-xs text-muted-foreground">
