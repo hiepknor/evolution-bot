@@ -6,6 +6,7 @@ import { QuickToast } from '@/components/layout/quick-toast';
 import { DashboardPage } from '@/pages/dashboard-page';
 import { initDb } from '@/lib/db/database';
 import { campaignsRepo } from '@/lib/db/repositories';
+import { useScreenFlag } from '@/hooks/use-screen-flag';
 import { useSettingsStore } from '@/stores/use-settings-store';
 import { useGroupsStore } from '@/stores/use-groups-store';
 import { useCampaignStore } from '@/stores/use-campaign-store';
@@ -15,6 +16,7 @@ export default function App(): JSX.Element {
   const loadGroups = useGroupsStore((state) => state.loadCached);
   const loadHistory = useCampaignStore((state) => state.loadHistory);
   const restoreLatestCampaign = useCampaignStore((state) => state.restoreLatestCampaign);
+  const screenFlag = useScreenFlag();
 
   useEffect(() => {
     const boot = async () => {
@@ -35,10 +37,10 @@ export default function App(): JSX.Element {
 
   return (
     <AppErrorBoundary>
-      <div className="flex h-screen flex-col bg-background text-foreground">
+      <div className={`flex h-screen flex-col bg-background text-foreground ${screenFlag}`} data-screen={screenFlag}>
         <QuickToast />
         <AppHeader />
-        <DashboardPage />
+        <DashboardPage screenFlag={screenFlag} />
         <FooterStatus />
       </div>
     </AppErrorBoundary>

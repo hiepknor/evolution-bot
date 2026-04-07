@@ -137,14 +137,14 @@ export function FooterStatus(): JSX.Element {
   return (
     <footer className="space-y-2 border-t border-border/80 bg-card/70 px-4 py-3">
       <Progress value={percent} />
-      <div className="flex items-center justify-between text-xs text-muted-foreground">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
         <div>{progressSummary}</div>
         <div className="flex items-center gap-2">
           {showLastRunHint ? <span>Kết quả lần chạy gần nhất</span> : null}
           <Badge variant={campaignStatusVariant}>{campaignStatusLabel}</Badge>
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-2 text-xs text-foreground/90 lg:grid-cols-6">
+      <div className="grid grid-cols-1 gap-2 text-xs text-foreground/90 sm:grid-cols-2 lg:grid-cols-6">
         <div>Đã gửi: {progress?.sent ?? 0}</div>
         <div>Lỗi: {progress?.failed ?? 0}</div>
         <div>Bỏ qua: {progress?.skipped ?? 0}</div>

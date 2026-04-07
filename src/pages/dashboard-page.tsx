@@ -6,6 +6,7 @@ import { OperationsPanel } from '@/components/composer/operations-panel';
 import { GroupsPanel } from '@/components/groups/groups-panel';
 import { ActivityLogPanel } from '@/components/logs/activity-log-panel';
 import { PreviewPanel } from '@/components/preview/preview-panel';
+import type { ScreenFlag } from '@/hooks/use-screen-flag';
 import { useSettingsStore } from '@/stores/use-settings-store';
 
 type LeftTab = 'content' | 'operations' | 'connection' | 'history';
@@ -16,11 +17,44 @@ const LEFT_TABS: Array<{ id: LeftTab; label: string }> = [
   { id: 'history', label: 'Lịch sử' }
 ];
 
-export function DashboardPage(): JSX.Element {
+interface DashboardPageProps {
+  screenFlag: ScreenFlag;
+}
+
+export function DashboardPage({ screenFlag }: DashboardPageProps): JSX.Element {
   const badgeState = useSettingsStore((state) => state.badgeState);
   const providerMode = useSettingsStore((state) => state.settings?.providerMode);
   const [activeTab, setActiveTab] = useState<LeftTab>('content');
   const initializedRef = useRef(false);
+  const isSmallScreen = screenFlag === 'small-screen';
+  const isFullScreen = screenFlag === 'full-screen';
+
+  const mainClassName = isSmallScreen
+    ? 'grid flex-1 grid-cols-1 gap-3 overflow-auto p-3 sm:gap-4 sm:p-4'
+    : isFullScreen
+      ? 'grid flex-1 grid-cols-[minmax(420px,34%)_minmax(0,1fr)] gap-5 overflow-hidden px-6 py-5'
+      : 'grid flex-1 grid-cols-1 gap-4 overflow-hidden p-4 lg:grid-cols-[380px_minmax(0,1fr)]';
+  const leftSectionClassName = isSmallScreen
+    ? 'flex flex-col gap-3'
+    : isFullScreen
+      ? 'flex min-h-0 flex-col gap-5 overflow-hidden'
+      : 'flex min-h-0 flex-col gap-4 overflow-hidden';
+  const tabGridClassName = isSmallScreen
+    ? 'grid grid-cols-2 gap-2 sm:grid-cols-4'
+    : isFullScreen
+      ? 'grid grid-cols-4 gap-2'
+      : 'grid grid-cols-2 gap-2 lg:grid-cols-4';
+  const contentClassName = isSmallScreen ? 'overflow-visible' : 'min-h-0 flex-1 overflow-auto';
+  const rightSectionClassName = isSmallScreen
+    ? 'grid grid-cols-1 gap-3'
+    : isFullScreen
+      ? 'grid min-h-0 grid-rows-[minmax(0,1.35fr)_minmax(0,1fr)] gap-5 overflow-hidden'
+      : 'grid min-h-0 grid-rows-[minmax(0,1.2fr)_minmax(0,1fr)] gap-4 overflow-hidden';
+  const rightBottomClassName = isSmallScreen
+    ? 'grid grid-cols-1 gap-3'
+    : isFullScreen
+      ? 'grid min-h-0 grid-cols-2 gap-5'
+      : 'grid min-h-0 grid-cols-1 gap-4 lg:grid-cols-2';
 
   useEffect(() => {
     if (initializedRef.current) {
@@ -34,9 +68,9 @@ export function DashboardPage(): JSX.Element {
   }, [badgeState]);
 
   return (
-    <main className="grid flex-1 grid-cols-1 gap-4 overflow-hidden p-4 lg:grid-cols-[380px_minmax(0,1fr)]">
-      <section className="flex min-h-0 flex-col gap-4 overflow-hidden">
-        <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+    <main className={mainClassName}>
+      <section className={leftSectionClassName}>
+        <div className={tabGridClassName}>
           {LEFT_TABS.map((tab) => (
             <button
               key={tab.id}
@@ -66,7 +100,7 @@ export function DashboardPage(): JSX.Element {
           </div>
         ) : null}
 
-        <div className="min-h-0 flex-1 overflow-auto">
+        <div className={contentClassName}>
           {activeTab === 'content' ? <ComposerPanel /> : null}
           {activeTab === 'operations' ? <OperationsPanel /> : null}
           {activeTab === 'connection' ? <ConnectionPanel /> : null}
@@ -74,9 +108,9 @@ export function DashboardPage(): JSX.Element {
         </div>
       </section>
 
-      <section className="grid min-h-0 grid-rows-[minmax(0,1.2fr)_minmax(0,1fr)] gap-4 overflow-hidden">
+      <section className={rightSectionClassName}>
         <GroupsPanel />
-        <div className="grid min-h-0 grid-cols-1 gap-4 lg:grid-cols-2">
+        <div className={rightBottomClassName}>
           <PreviewPanel />
           <ActivityLogPanel />
         </div>
