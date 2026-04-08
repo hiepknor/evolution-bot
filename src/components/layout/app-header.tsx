@@ -1,33 +1,28 @@
-import { Wifi } from 'lucide-react';
+import { Settings2, Wifi } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { getConnectionStatusPresentation } from '@/lib/connection/connection-status';
 import { useSettingsStore } from '@/stores/use-settings-store';
 
-const badgeVariant = (
-  state: 'connected' | 'disconnected' | 'checking'
-): 'success' | 'warning' | 'destructive' => {
-  if (state === 'connected') return 'success';
-  if (state === 'checking') return 'warning';
-  return 'destructive';
-};
+interface AppHeaderProps {
+  connectionSettingsOpen: boolean;
+  onOpenConnectionSettings: () => void;
+}
 
-const badgeLabel = (state: 'connected' | 'disconnected' | 'checking'): string => {
-  if (state === 'connected') return 'Đã kết nối';
-  if (state === 'checking') return 'Đang kiểm tra';
-  return 'Mất kết nối';
-};
-
-export function AppHeader(): JSX.Element {
+export function AppHeader({ connectionSettingsOpen, onOpenConnectionSettings }: AppHeaderProps): JSX.Element {
   const settings = useSettingsStore((state) => state.settings);
   const connectedInstanceName = useSettingsStore((state) => state.connectedInstanceName);
   const badgeState = useSettingsStore((state) => state.badgeState);
+  const statusMessage = useSettingsStore((state) => state.statusMessage);
+  const connectionStatus = getConnectionStatusPresentation(badgeState, statusMessage);
   const displayInstance =
     badgeState === 'connected'
-      ? connectedInstanceName ?? settings?.instanceName ?? 'chưa có instance'
-      : 'chưa có instance';
+      ? connectedInstanceName ?? settings?.instanceName ?? 'Chưa có instance'
+      : 'Chưa có instance';
 
   return (
     <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border/80 bg-card/70 px-4 py-3 backdrop-blur">
-      <div className="min-w-[280px] flex-1">
+      <div className="min-w-0 flex-1">
         <h1 className="text-lg font-semibold tracking-wide text-[hsl(var(--text-strong))]">
           Evo Broadcast Control
         </h1>
@@ -36,18 +31,33 @@ export function AppHeader(): JSX.Element {
         </p>
       </div>
 
-      <div className="ml-auto flex min-w-[250px] items-center justify-end gap-2">
+      <div className="flex w-full flex-wrap items-center justify-start gap-2 sm:ml-auto sm:w-auto sm:justify-end">
         <Badge
           variant="outline"
-          className="h-9 max-w-[220px] items-center truncate font-mono text-xs leading-none"
+          className="h-9 max-w-full items-center truncate px-3 text-sm leading-none sm:max-w-[220px]"
           title={displayInstance}
         >
           {displayInstance}
         </Badge>
-        <Badge variant={badgeVariant(badgeState)} className="h-9 items-center gap-1 px-3 text-xs leading-none">
-          <Wifi className={`h-3 w-3 ${badgeState === 'checking' ? 'animate-pulse' : ''}`} />
-          {badgeLabel(badgeState)}
+        <Badge
+          variant={connectionStatus.tone}
+          className="h-9 items-center gap-1 px-3 text-sm leading-none"
+          title={statusMessage}
+        >
+          <Wifi className={`h-3.5 w-3.5 ${badgeState === 'checking' ? 'animate-pulse' : ''}`} />
+          {connectionStatus.label}
         </Badge>
+        <Button
+          type="button"
+          variant={connectionSettingsOpen ? 'secondary' : 'outline'}
+          size="icon"
+          className="h-9 w-9"
+          aria-label="Mở cài đặt kết nối"
+          title="Cài đặt kết nối"
+          onClick={onOpenConnectionSettings}
+        >
+          <Settings2 className="h-4 w-4" />
+        </Button>
       </div>
     </header>
   );

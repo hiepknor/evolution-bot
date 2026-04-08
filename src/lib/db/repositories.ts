@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { getDb } from '@/lib/db/database';
 import type {
   Campaign,
+  CampaignConfig,
   CampaignLog,
   CampaignTarget,
   ConnectionSettings,
@@ -76,6 +77,44 @@ export const settingsRepo = {
       createdAt,
       updatedAt
     };
+  }
+};
+
+export const campaignPreferencesRepo = {
+  async get(): Promise<CampaignConfig | null> {
+    const db = await getDb();
+    const rows = await db.select<
+      Array<{
+        config_json: string;
+      }>
+    >('SELECT config_json FROM campaign_preferences LIMIT 1');
+
+    const row = rows[0];
+    if (!row) {
+      return null;
+    }
+
+    try {
+      return JSON.parse(row.config_json) as CampaignConfig;
+    } catch {
+      return null;
+    }
+  },
+
+  async upsert(config: CampaignConfig): Promise<void> {
+    const db = await getDb();
+    const updatedAt = now();
+    const rows = await db.select<Array<{ created_at: string }>>(
+      'SELECT created_at FROM campaign_preferences WHERE id = $1 LIMIT 1',
+      ['default']
+    );
+    const createdAt = rows[0]?.created_at ?? updatedAt;
+
+    await db.execute(
+      `INSERT OR REPLACE INTO campaign_preferences (id, config_json, created_at, updated_at)
+       VALUES ($1, $2, $3, $4)`,
+      ['default', JSON.stringify(config), createdAt, updatedAt]
+    );
   }
 };
 

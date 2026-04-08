@@ -1,10 +1,12 @@
 import dayjs from 'dayjs';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Trash2 } from 'lucide-react';
+import { Search, Trash2, X } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { panelTokens } from '@/components/layout/panel-tokens';
+import { cn } from '@/lib/utils/cn';
 import { useCampaignStore } from '@/stores/use-campaign-store';
 import { useActivityLogStore } from '@/stores/use-activity-log-store';
 
@@ -32,6 +34,19 @@ const filterLabel: Record<LogFilter, string> = {
   warn: 'Cảnh báo',
   error: 'Lỗi'
 };
+
+const filterShortLabel: Record<LogFilter, string> = {
+  all: 'Tất cả',
+  info: 'Tin',
+  success: 'OK',
+  warn: 'C.báo',
+  error: 'Lỗi'
+};
+
+interface ActivityLogPanelProps {
+  onRequestClose?: () => void;
+  className?: string;
+}
 
 const formatRemainingTime = (ms: number): string => {
   const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
@@ -89,7 +104,7 @@ const localizeLogMessage = (raw: string): string => {
   return raw;
 };
 
-export function ActivityLogPanel(): JSX.Element {
+export function ActivityLogPanel({ onRequestClose, className }: ActivityLogPanelProps = {}): JSX.Element {
   const [filter, setFilter] = useState<LogFilter>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [liveEtaMs, setLiveEtaMs] = useState<number>(0);
@@ -129,6 +144,24 @@ export function ActivityLogPanel(): JSX.Element {
       return localizeLogMessage(log.message).toLowerCase().includes(term);
     });
   }, [filter, logs, searchTerm]);
+  const filterCounts = useMemo(() => {
+    const counts: Record<LogFilter, number> = {
+      all: logs.length,
+      info: 0,
+      success: 0,
+      warn: 0,
+      error: 0
+    };
+
+    logs.forEach((log) => {
+      if (log.level === 'info') counts.info += 1;
+      if (log.level === 'success') counts.success += 1;
+      if (log.level === 'warn') counts.warn += 1;
+      if (log.level === 'error') counts.error += 1;
+    });
+
+    return counts;
+  }, [logs]);
   const isAlmostDone = Boolean(
     running &&
     !paused &&
@@ -238,18 +271,30 @@ export function ActivityLogPanel(): JSX.Element {
   }, []);
 
   return (
-    <Card className="flex h-full min-h-0 flex-col overflow-hidden">
-      <CardHeader className="pb-3">
+    <Card className={cn('flex h-full min-h-0 flex-col overflow-hidden', className)}>
+      <CardHeader className={cn('flex flex-row items-start justify-between gap-2', panelTokens.cardHeader)}>
         <CardTitle>Nhật ký hoạt động</CardTitle>
+        {onRequestClose ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-9 w-9 shrink-0"
+            aria-label="Đóng nhật ký hoạt động"
+            onClick={onRequestClose}
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        ) : null}
       </CardHeader>
-      <CardContent className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
+      <CardContent className={cn('flex min-h-0 flex-1 flex-col overflow-hidden', panelTokens.cardContent)}>
         {running && queueProgress ? (
-          <div className="rounded-md border border-primary/30 bg-primary/10 p-2">
+          <div className="rounded-md border border-primary/30 bg-primary/10 p-3">
             <div className="mb-1 flex items-center justify-between">
               <Badge variant="secondary">Thông tin</Badge>
               <span className="text-xs text-primary">{runningEtaLabel}</span>
             </div>
-            <p className="text-xs leading-5 text-foreground/90">
+            <p className="text-sm leading-5 text-foreground/90">
               {paused ? 'Đang tạm dừng' : 'Đang chạy'} {queueProgress.processed}/{queueProgress.total}
               {activeCampaign?.name ? ` • ${activeCampaign.name}` : ''}.
             </p>
@@ -258,10 +303,10 @@ export function ActivityLogPanel(): JSX.Element {
           <div
             className={
               recentRunSnapshot.status === 'completed'
-                ? 'rounded-md border border-emerald-400/30 bg-emerald-500/10 p-2'
+                ? 'rounded-md border border-emerald-400/30 bg-emerald-500/10 p-3'
                 : recentRunSnapshot.status === 'failed'
-                  ? 'rounded-md border border-destructive/40 bg-destructive/10 p-2'
-                  : 'rounded-md border border-warning/40 bg-warning/10 p-2'
+                  ? 'rounded-md border border-destructive/40 bg-destructive/10 p-3'
+                  : 'rounded-md border border-warning/40 bg-warning/10 p-3'
             }
           >
             <div className="mb-1 flex items-center justify-between">
@@ -282,55 +327,80 @@ export function ActivityLogPanel(): JSX.Element {
               </Badge>
               <span className="text-xs text-muted-foreground">vừa xong</span>
             </div>
-            <p className="text-xs leading-5 text-foreground/90">
+            <p className="text-sm leading-5 text-foreground/90">
               Kết thúc {recentRunSnapshot.processed}/{recentRunSnapshot.total}
               {recentRunSnapshot.campaignName ? ` • ${recentRunSnapshot.campaignName}` : ''}.
             </p>
           </div>
         ) : null}
-        <div className="space-y-2">
-          <div className="flex flex-wrap items-center gap-2">
-            {(Object.keys(filterLabel) as LogFilter[]).map((key) => (
-              <Button
-                key={key}
-                size="sm"
-                variant={filter === key ? 'default' : 'secondary'}
-                className="h-7 rounded-full px-3 text-xs"
-                onClick={() => setFilter(key)}
-              >
-                {filterLabel[key]}
-              </Button>
-            ))}
-          </div>
-          <div className="flex items-center gap-2">
+        <div className={panelTokens.section}>
+          <div className="relative min-w-0">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
-              className="h-8 text-xs"
+              className={cn('rounded-md border-border/70 bg-background/40 pl-9 pr-3', panelTokens.control)}
               placeholder="Tìm theo nội dung log"
             />
+          </div>
+          <div className="flex items-center gap-2">
+            <div
+              className="min-w-0 flex-1 overflow-x-auto rounded-md border border-border/70 bg-background/35 p-0.5"
+              role="tablist"
+              aria-label="Bộ lọc mức log"
+            >
+              <div className="flex min-w-max items-center gap-0.5">
+                {(Object.keys(filterLabel) as LogFilter[]).map((key) => (
+                  <button
+                    key={key}
+                    type="button"
+                    role="tab"
+                    aria-selected={filter === key}
+                    aria-pressed={filter === key}
+                    className={`h-9 whitespace-nowrap rounded-md px-3 text-sm font-medium transition-colors ${
+                      filter === key
+                        ? 'bg-primary text-primary-foreground'
+                        : 'text-foreground/85 hover:bg-muted/50'
+                    }`}
+                    onClick={() => setFilter(key)}
+                  >
+                    {filter === key ? (
+                      <>
+                        <span className="sm:hidden">{`${filterShortLabel[key]} (${filterCounts[key]})`}</span>
+                        <span className="hidden sm:inline">{`${filterLabel[key]} (${filterCounts[key]})`}</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="sm:hidden">{filterShortLabel[key]}</span>
+                        <span className="hidden sm:inline">{filterLabel[key]}</span>
+                      </>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
             <Button
-              size="sm"
+              size="icon"
               variant="outline"
-              className="h-8 shrink-0 px-2 text-xs"
+              className={cn('w-9 shrink-0 rounded-md', panelTokens.control)}
               title="Xóa toàn bộ nhật ký"
               onClick={() => {
                 clearUiLogs();
                 clearCampaignLogs();
               }}
             >
-              <Trash2 className="h-3.5 w-3.5" />
+              <Trash2 className="h-4 w-4" />
             </Button>
           </div>
         </div>
-        <div className="flex-1 space-y-2 overflow-auto rounded-md border border-border/55 bg-muted/10 p-2">
+        <div className="flex-1 space-y-2 overflow-auto rounded-md border border-border/55 bg-muted/10 p-3">
           {filteredLogs.length === 0 ? (
-            <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
+            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
               {logs.length > 0 ? 'Không có log phù hợp bộ lọc hiện tại.' : 'Chưa có log nào.'}
             </div>
           ) : (
             filteredLogs.map((log) => (
-              <div key={log.id} className="rounded-md bg-card/30 p-2 text-xs">
+              <div key={log.id} className="rounded-md bg-card/30 p-3 text-sm">
                 <div className="mb-1 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     {filter === 'all' ? (

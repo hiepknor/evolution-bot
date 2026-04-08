@@ -3,6 +3,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { useMutation } from '@tanstack/react-query';
+import { Loader2, PlugZap, Save, Unplug } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -14,6 +15,7 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select';
+import { getConnectionStatusPresentation } from '@/lib/connection/connection-status';
 import { useSettingsStore } from '@/stores/use-settings-store';
 
 const schema = z
@@ -72,6 +74,7 @@ export function ConnectionPanel(): JSX.Element {
   const testConnectionStore = useSettingsStore((state) => state.testConnection);
   const disconnect = useSettingsStore((state) => state.disconnect);
   const badgeState = useSettingsStore((state) => state.badgeState);
+  const statusMessage = useSettingsStore((state) => state.statusMessage);
   const loading = useSettingsStore((state) => state.loading);
 
   const form = useForm<FormValues>({
@@ -109,6 +112,20 @@ export function ConnectionPanel(): JSX.Element {
   const providerMode = form.watch('providerMode');
   const busy = loading || saveMutation.isPending || testMutation.isPending;
   const canEditConnectionFields = providerMode !== 'mock';
+  const connectionStatus = getConnectionStatusPresentation(badgeState, statusMessage);
+  const shouldShowStatusBanner = badgeState === 'checking' || connectionStatus.hasError;
+  const statusToneClass =
+    badgeState === 'checking'
+      ? 'border-warning/30 bg-warning/10 text-warning'
+      : 'border-destructive/30 bg-destructive/10 text-destructive';
+  const saveButtonLabel = saveMutation.isPending ? 'Đang lưu...' : 'Lưu cấu hình';
+  const connectButtonLabel =
+    badgeState === 'connected'
+      ? 'Ngắt kết nối'
+      : testMutation.isPending
+        ? 'Đang kết nối...'
+        : 'Kết nối';
+
   const normalizeValuesForProvider = (values: FormValues): FormValues => {
     const fallbackBaseUrl = settings?.baseUrl?.trim() || 'http://localhost:8080';
     const fallbackApiKey = settings?.apiKey?.trim() || 'mock-key';
@@ -132,90 +149,134 @@ export function ConnectionPanel(): JSX.Element {
   };
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle>Kết nối</CardTitle>
+    <Card className="border-border/70 bg-card/85 shadow-[0_14px_36px_-26px_hsl(var(--foreground))]">
+      <CardHeader className="space-y-3 border-b border-border/60 pb-3">
+        <div>
+          <div>
+            <CardTitle className="text-xl font-semibold leading-none tracking-tight">Kết nối</CardTitle>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Quản lý nguồn cung cấp, thông tin API và trạng thái instance đang dùng.
+            </p>
+          </div>
+        </div>
       </CardHeader>
-      <CardContent className="space-y-3">
-        <div className="space-y-1">
-          <Label>Nguồn cung cấp</Label>
-          <Select
-            value={form.watch('providerMode')}
-            onValueChange={(value) => form.setValue('providerMode', value as FormValues['providerMode'])}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="evolution">Evolution API</SelectItem>
-              <SelectItem value="mock">Chế độ mô phỏng</SelectItem>
-            </SelectContent>
-          </Select>
+      <CardContent className="space-y-4 pt-4">
+        {shouldShowStatusBanner ? (
+          <div className={`rounded-md border px-3 py-2 text-sm ${statusToneClass}`}>
+            {statusMessage}
+          </div>
+        ) : null}
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label>Nguồn cung cấp</Label>
+            <Select
+              value={providerMode}
+              onValueChange={(value) => form.setValue('providerMode', value as FormValues['providerMode'])}
+            >
+              <SelectTrigger className="h-10 text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="evolution">Evolution API</SelectItem>
+                <SelectItem value="mock">Chế độ mô phỏng</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Tên instance</Label>
+            <Input
+              {...form.register('instanceName')}
+              placeholder="instance-01"
+              className="h-10 text-sm"
+              disabled={!canEditConnectionFields}
+            />
+            {form.formState.errors.instanceName?.message ? (
+              <p className="text-xs text-destructive">{form.formState.errors.instanceName?.message}</p>
+            ) : null}
+          </div>
         </div>
 
-        <div className="space-y-1">
+        <div className="space-y-1.5">
           <Label>Base URL</Label>
           <Input
             {...form.register('baseUrl')}
             placeholder="http://localhost:8080 hoặc https://api.example.com"
+            className="h-10 text-sm"
             disabled={!canEditConnectionFields}
           />
           <p className="text-xs text-muted-foreground">
             Dùng local: <span className="font-mono">http://localhost:8080</span> hoặc remote:{' '}
             <span className="font-mono">https://api.example.com</span>
           </p>
-          <p className="text-xs text-destructive">{form.formState.errors.baseUrl?.message}</p>
+          {form.formState.errors.baseUrl?.message ? (
+            <p className="text-xs text-destructive">{form.formState.errors.baseUrl?.message}</p>
+          ) : null}
         </div>
 
-        <div className="space-y-1">
+        <div className="space-y-1.5">
           <Label>API Key</Label>
           <div className="flex flex-col gap-2 sm:flex-row">
             <Input
               {...form.register('apiKey')}
               type={showApiKey ? 'text' : 'password'}
               placeholder="apikey..."
+              className="h-10 text-sm"
               disabled={!canEditConnectionFields}
             />
             <Button
               type="button"
               variant="outline"
               size="sm"
-              className="h-9 px-3 text-xs"
+              className="h-10 px-4 text-sm"
               onClick={() => setShowApiKey((prev) => !prev)}
               disabled={!canEditConnectionFields}
             >
               {showApiKey ? 'Ẩn' : 'Hiện'}
             </Button>
           </div>
-          <p className="text-xs text-destructive">{form.formState.errors.apiKey?.message}</p>
+          {form.formState.errors.apiKey?.message ? (
+            <p className="text-xs text-destructive">{form.formState.errors.apiKey?.message}</p>
+          ) : null}
         </div>
 
-        <div className="space-y-1">
-          <Label>Tên instance</Label>
-          <Input
-            {...form.register('instanceName')}
-            placeholder="instance-01"
-            disabled={!canEditConnectionFields}
-          />
-          <p className="text-xs text-destructive">{form.formState.errors.instanceName?.message}</p>
-        </div>
+        {providerMode === 'mock' ? (
+          <div className="rounded-md border border-warning/35 bg-warning/10 px-3 py-2 text-sm text-warning">
+            Chế độ mô phỏng đang bật. Kết nối mạng sẽ được giả lập để kiểm thử giao diện nhanh.
+          </div>
+        ) : null}
 
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <Button
             type="button"
-            variant="secondary"
-            className="w-full"
+            variant="outline"
+            className="h-10 w-full text-sm font-medium"
             onClick={form.handleSubmit(async (values) => {
               const normalized = normalizeValuesForProvider(values);
               await saveMutation.mutateAsync(normalized);
             })}
             disabled={busy}
           >
-            {saveMutation.isPending ? 'Đang lưu...' : 'Lưu cấu hình'}
+            {saveMutation.isPending ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                {saveButtonLabel}
+              </>
+            ) : (
+              <>
+                <Save className="mr-2 h-4 w-4" />
+                {saveButtonLabel}
+              </>
+            )}
           </Button>
           <Button
             type="button"
-            className="w-full"
+            className={
+              badgeState === 'connected'
+                ? 'h-10 w-full border-destructive/40 text-sm font-medium text-destructive hover:bg-destructive/10'
+                : 'h-10 w-full text-sm font-medium'
+            }
             variant={badgeState === 'connected' ? 'outline' : 'default'}
             onClick={
               badgeState === 'connected'
@@ -229,7 +290,22 @@ export function ConnectionPanel(): JSX.Element {
             }
             disabled={busy}
           >
-            {badgeState === 'connected' ? 'Ngắt kết nối' : testMutation.isPending ? 'Đang kết nối...' : 'Kết nối'}
+            {badgeState === 'connected' ? (
+              <>
+                <Unplug className="mr-2 h-4 w-4" />
+                {connectButtonLabel}
+              </>
+            ) : testMutation.isPending ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                {connectButtonLabel}
+              </>
+            ) : (
+              <>
+                <PlugZap className="mr-2 h-4 w-4" />
+                {connectButtonLabel}
+              </>
+            )}
           </Button>
         </div>
       </CardContent>
