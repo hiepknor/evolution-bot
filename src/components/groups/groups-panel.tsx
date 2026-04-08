@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { panelTokens } from '@/components/layout/panel-tokens';
 import { createProvider } from '@/lib/providers/provider-factory';
 import { AppError } from '@/lib/utils/error';
 import { settingsRepo } from '@/lib/db/repositories';
@@ -51,6 +52,9 @@ const permissionFilterLabel: Record<GroupPermissionFilterMode, string> = {
   blocked: 'Không gửi được'
 };
 
+const connectionRequiredMessage =
+  'Chưa kết nối instance. Mở cài đặt kết nối (icon bánh răng) và bấm "Kết nối".';
+
 const getGroupStatusMeta = (
   status: TargetStatus | undefined,
   permissionState: GroupPermissionState
@@ -86,7 +90,11 @@ const getGroupStatusMeta = (
   return { label: 'Đã dừng', variant: 'secondary' };
 };
 
-export function GroupsPanel(): JSX.Element {
+interface GroupsPanelProps {
+  onOpenConnectionSettings?: () => void;
+}
+
+export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX.Element {
   const settings = useSettingsStore((state) => state.settings);
   const loadSettings = useSettingsStore((state) => state.load);
   const badgeState = useSettingsStore((state) => state.badgeState);
@@ -102,8 +110,10 @@ export function GroupsPanel(): JSX.Element {
   const [copiedChatId, setCopiedChatId] = useState<string | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const tableViewportRef = useRef<HTMLDivElement | null>(null);
+  const stickyFiltersRef = useRef<HTMLDivElement | null>(null);
   const rowRefs = useRef<Map<string, HTMLTableRowElement>>(new Map());
   const lastAutoScrolledChatIdRef = useRef<string | null>(null);
+  const [tableHeaderTopOffset, setTableHeaderTopOffset] = useState(0);
 
   const {
     groups,
@@ -168,6 +178,8 @@ export function GroupsPanel(): JSX.Element {
   const hasPermissionFilter = permissionFilterMode !== 'all';
   const hasAnyFilter =
     hasSearchFilter || hasMinMembersFilter || hasStatusFilter || hasPermissionFilter;
+  const hasGroups = groups.length > 0;
+  const visibleSummary = hasAnyFilter ? `${filtered.length}/${groups.length}` : `${filtered.length}`;
   const activeRunningChatId = useMemo(() => {
     if (!running) {
       return null;
@@ -232,7 +244,7 @@ export function GroupsPanel(): JSX.Element {
       }
 
       if (currentSettings.providerMode !== 'mock' && badgeState !== 'connected') {
-        throw new Error('Chưa kết nối instance. Vui lòng vào tab Kết nối để bấm "Kết nối" trước.');
+        throw new Error('Chưa kết nối instance. Vui lòng mở cài đặt kết nối (icon bánh răng) và bấm "Kết nối" trước.');
       }
 
       const provider = createProvider({
@@ -361,7 +373,7 @@ export function GroupsPanel(): JSX.Element {
       return 'Đang xóa cache nhóm. Vui lòng chờ hoàn tất.';
     }
     if (settings?.providerMode !== 'mock' && badgeState !== 'connected') {
-      return 'Chưa kết nối instance. Hãy vào tab Kết nối và bấm "Kết nối".';
+      return connectionRequiredMessage;
     }
     return null;
   }, [
@@ -370,6 +382,20 @@ export function GroupsPanel(): JSX.Element {
     settings?.providerMode,
     syncMutation.isPending
   ]);
+
+  const onSyncGroups = () => {
+    syncMutation.mutate();
+  };
+
+  const onClearCache = () => {
+    if (groups.length > 0 && !window.confirm('Xóa toàn bộ cache nhóm cục bộ?')) {
+      return;
+    }
+    clearCacheMutation.mutate();
+  };
+
+  const canOpenConnectionSettingsFromWarning =
+    syncDisabledReason === connectionRequiredMessage && Boolean(onOpenConnectionSettings);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -419,9 +445,32 @@ export function GroupsPanel(): JSX.Element {
     }
   }, [running]);
 
+  useEffect(() => {
+    const stickyFiltersElement = stickyFiltersRef.current;
+    if (!stickyFiltersElement) {
+      setTableHeaderTopOffset(0);
+      return;
+    }
+
+    const syncHeaderOffset = () => {
+      setTableHeaderTopOffset(stickyFiltersElement.offsetHeight);
+    };
+
+    syncHeaderOffset();
+
+    if (typeof ResizeObserver !== 'undefined') {
+      const observer = new ResizeObserver(() => syncHeaderOffset());
+      observer.observe(stickyFiltersElement);
+      return () => observer.disconnect();
+    }
+
+    window.addEventListener('resize', syncHeaderOffset);
+    return () => window.removeEventListener('resize', syncHeaderOffset);
+  }, []);
+
   return (
     <Card className="flex h-full min-h-0 flex-col overflow-hidden border-border/80 bg-card/80 backdrop-blur-sm">
-      <CardHeader className="space-y-1 border-b border-border/70 pb-2">
+      <CardHeader className={`space-y-1 border-b border-border/70 ${panelTokens.cardHeader}`}>
         <CardTitle className="flex items-center justify-between text-sm">
           <span>Nhóm</span>
           <div className="flex items-center gap-2">
@@ -443,17 +492,19 @@ export function GroupsPanel(): JSX.Element {
           Đồng bộ lần cuối: {lastSyncedAt ? dayjs(lastSyncedAt).format('YYYY-MM-DD HH:mm:ss') : 'chưa có'}
         </div>
       </CardHeader>
-      <CardContent className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden pt-3">
-        <div className="rounded-lg border border-border/55 bg-muted/20 p-2">
+      <CardContent className={`flex min-h-0 flex-1 flex-col overflow-hidden ${panelTokens.cardContent}`}>
+        <div className={panelTokens.section}>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex flex-wrap items-center justify-start gap-1.5">
-              <Badge variant="outline" className="h-6 gap-1 rounded-full px-2">
-                <Users className="h-3 w-3" />
-                Hiển thị: {filtered.length}
-              </Badge>
+              {hasGroups || hasAnyFilter ? (
+                <Badge variant="outline" className="h-6 gap-1 rounded-full px-2">
+                  <Users className="h-3 w-3" />
+                  Hiển thị: {visibleSummary}
+                </Badge>
+              ) : null}
               <Badge
                 variant="outline"
-                className="h-6 max-w-[260px] items-center justify-start rounded-full px-2 text-[11px]"
+                className="h-6 max-w-[300px] items-center justify-start rounded-full px-2 text-xs"
                 title={
                   activeCampaign
                     ? `Trạng thái theo chiến dịch: ${activeCampaign.name || activeCampaign.id}`
@@ -467,347 +518,382 @@ export function GroupsPanel(): JSX.Element {
             </div>
             <div className="flex flex-wrap items-center justify-end gap-2">
               <Button
-                onClick={() => syncMutation.mutate()}
-                className="h-8 w-auto min-w-[220px] rounded-md bg-primary/95 px-4 text-xs text-primary-foreground shadow-[0_6px_20px_-10px_hsl(var(--primary))] hover:bg-primary"
+                onClick={onSyncGroups}
+                className={`${panelTokens.control} w-auto min-w-[220px] rounded-md bg-primary/95 px-4 text-primary-foreground shadow-[0_8px_24px_-14px_hsl(var(--primary))] hover:bg-primary`}
                 disabled={syncDisabledReason !== null}
                 title={syncDisabledReason ?? 'Tải danh sách nhóm từ Evo API'}
               >
-                <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${syncMutation.isPending ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`mr-2 h-4 w-4 ${syncMutation.isPending ? 'animate-spin' : ''}`} />
                 {syncMutation.isPending ? 'Đang tải danh sách...' : 'Tải danh sách nhóm'}
               </Button>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  if (groups.length > 0 && !window.confirm('Xóa toàn bộ cache nhóm cục bộ?')) {
-                    return;
-                  }
-                  clearCacheMutation.mutate();
-                }}
-                disabled={syncMutation.isPending || clearCacheMutation.isPending || groups.length === 0}
-                className="h-8 rounded-md px-3 text-xs"
-              >
-                {clearCacheMutation.isPending ? 'Đang xóa cache...' : 'Xóa cache'}
-              </Button>
+              {hasGroups ? (
+                <Button
+                  variant="outline"
+                  onClick={onClearCache}
+                  disabled={syncMutation.isPending || clearCacheMutation.isPending}
+                  className={`${panelTokens.control} rounded-md px-3`}
+                >
+                  {clearCacheMutation.isPending ? 'Đang xóa cache...' : 'Xóa cache'}
+                </Button>
+              ) : null}
             </div>
           </div>
+          {syncDisabledReason ? (
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-md border border-warning/35 bg-warning/10 px-3 py-2 text-sm text-warning">
+              <span>{syncDisabledReason}</span>
+              {canOpenConnectionSettingsFromWarning ? (
+                <button
+                  type="button"
+                  className={`${panelTokens.control} rounded-md border border-warning/45 bg-warning/15 px-3 font-medium text-warning transition-colors hover:bg-warning/25`}
+                  onClick={onOpenConnectionSettings}
+                >
+                  Mở cài đặt
+                </button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
 
         <div ref={tableViewportRef} className="min-h-0 flex-1 overflow-auto rounded-md border border-border">
-          <div className="sticky top-0 z-30 space-y-2 border-b border-border/55 bg-card/95 p-2 backdrop-blur-sm">
-            <div className="space-y-2">
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="relative min-w-[240px] flex-1">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    ref={searchInputRef}
-                    value={searchTerm}
-                    onChange={(event) => setSearchTerm(event.target.value)}
-                    placeholder="Tìm theo tên nhóm hoặc chat id"
-                    className="h-8 rounded-md border-border/70 bg-background/70 pl-9 text-xs"
-                  />
-                </div>
-                <div className="inline-flex h-8 items-center rounded-md border border-border/60 bg-background/40 p-0.5">
-                  <Button
-                    size="sm"
-                    variant={statusFilterMode === 'all' ? 'default' : 'ghost'}
-                    onClick={() => setStatusFilterMode('all')}
-                    className="h-7 rounded-sm px-3 text-xs"
-                  >
-                    {statusFilterMode === 'all' ? `Tất cả (${filterCounts.status.all})` : 'Tất cả'}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant={statusFilterMode === 'pending' ? 'default' : 'ghost'}
-                    onClick={() => setStatusFilterMode('pending')}
-                    className="h-7 rounded-sm px-3 text-xs"
-                  >
-                    {statusFilterMode === 'pending'
-                      ? `Chưa gửi (${filterCounts.status.pending})`
-                      : 'Chưa gửi'}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant={statusFilterMode === 'sent' ? 'default' : 'ghost'}
-                    onClick={() => setStatusFilterMode('sent')}
-                    className="h-7 rounded-sm px-3 text-xs"
-                  >
-                    {statusFilterMode === 'sent' ? `Đã gửi (${filterCounts.status.sent})` : 'Đã gửi'}
-                  </Button>
-                </div>
-                <Select
-                  value={permissionFilterMode}
-                  onValueChange={(value) => setPermissionFilterMode(value as GroupPermissionFilterMode)}
-                >
-                  <SelectTrigger className="h-8 w-[176px] rounded-md border-border/70 bg-background/70 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Mọi quyền</SelectItem>
-                    <SelectItem value="allowed">Gửi được</SelectItem>
-                    <SelectItem value="unknown">Cần kiểm tra</SelectItem>
-                    <SelectItem value="blocked">Không gửi được</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Button
-                  size="sm"
-                  variant={showAdvancedFilters || hasMinMembersFilter ? 'secondary' : 'outline'}
-                  onClick={() => setShowAdvancedFilters((prev) => !prev)}
-                  className="h-8 gap-1.5 rounded-md px-3 text-xs"
-                >
-                  <SlidersHorizontal className="h-3.5 w-3.5" />
-                  Bộ lọc nâng cao
-                </Button>
-              </div>
-              {showAdvancedFilters ? (
-                <div className="flex flex-wrap items-center gap-2 rounded-md border border-border/40 bg-muted/10 p-2">
-                  <Input
-                    type="number"
-                    min={0}
-                    step={1}
-                    value={minMembersInput}
-                    onChange={(event) => setMinMembersInput(event.target.value)}
-                    placeholder="Tối thiểu thành viên"
-                    className="h-8 w-[168px] rounded-md border-border/70 bg-background/70 text-xs"
-                  />
-                  {hasMinMembersFilter ? (
+          {hasGroups ? (
+            <>
+              <div
+                ref={stickyFiltersRef}
+                className="sticky top-0 z-30 space-y-3 border-b border-border/55 bg-card/95 p-3 backdrop-blur-sm"
+              >
+                <div className="space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="relative min-w-[240px] flex-1">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        ref={searchInputRef}
+                        value={searchTerm}
+                        onChange={(event) => setSearchTerm(event.target.value)}
+                        placeholder="Tìm theo tên nhóm hoặc chat id"
+                        className={`${panelTokens.control} rounded-md border-border/70 bg-background/70 pl-9`}
+                      />
+                    </div>
+                    <div className="inline-flex items-center rounded-md border border-border/60 bg-background/40 p-0.5">
+                      <Button
+                        size="sm"
+                        variant={statusFilterMode === 'all' ? 'default' : 'ghost'}
+                        onClick={() => setStatusFilterMode('all')}
+                        className={`${panelTokens.control} rounded-sm px-3`}
+                      >
+                        {statusFilterMode === 'all' ? `Tất cả (${filterCounts.status.all})` : 'Tất cả'}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={statusFilterMode === 'pending' ? 'default' : 'ghost'}
+                        onClick={() => setStatusFilterMode('pending')}
+                        className={`${panelTokens.control} rounded-sm px-3`}
+                      >
+                        {statusFilterMode === 'pending'
+                          ? `Chưa gửi (${filterCounts.status.pending})`
+                          : 'Chưa gửi'}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={statusFilterMode === 'sent' ? 'default' : 'ghost'}
+                        onClick={() => setStatusFilterMode('sent')}
+                        className={`${panelTokens.control} rounded-sm px-3`}
+                      >
+                        {statusFilterMode === 'sent' ? `Đã gửi (${filterCounts.status.sent})` : 'Đã gửi'}
+                      </Button>
+                    </div>
+                    <Select
+                      value={permissionFilterMode}
+                      onValueChange={(value) => setPermissionFilterMode(value as GroupPermissionFilterMode)}
+                    >
+                      <SelectTrigger className={`${panelTokens.control} w-[176px] rounded-md border-border/70 bg-background/70`}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Mọi quyền</SelectItem>
+                        <SelectItem value="allowed">Gửi được</SelectItem>
+                        <SelectItem value="unknown">Cần kiểm tra</SelectItem>
+                        <SelectItem value="blocked">Không gửi được</SelectItem>
+                      </SelectContent>
+                    </Select>
                     <Button
                       size="sm"
-                      variant="outline"
-                      className="h-8 px-2.5 text-xs"
-                      onClick={() => setMinMembersInput('')}
+                      variant={showAdvancedFilters || hasMinMembersFilter ? 'secondary' : 'outline'}
+                      onClick={() => setShowAdvancedFilters((prev) => !prev)}
+                      className={`${panelTokens.control} gap-1.5 rounded-md px-3`}
                     >
-                      Xóa mức tối thiểu
+                      <SlidersHorizontal className="h-4 w-4" />
+                      Bộ lọc nâng cao
                     </Button>
-                  ) : null}
-                </div>
-              ) : null}
-              {hasAnyFilter ? (
-                <div className="flex flex-wrap items-center gap-2">
-                  {hasSearchFilter ? (
-                    <button
-                      type="button"
-                      className="inline-flex h-7 items-center gap-1 rounded-full border border-border/60 bg-background/50 px-2.5 text-xs text-foreground/90 hover:bg-background"
-                      onClick={() => setSearchTerm('')}
-                      title="Bỏ bộ lọc từ khóa"
-                    >
-                      Từ khóa: {searchTerm.trim()}
-                      <X className="h-3.5 w-3.5 text-muted-foreground" />
-                    </button>
-                  ) : null}
-                  {hasStatusFilter ? (
-                    <button
-                      type="button"
-                      className="inline-flex h-7 items-center gap-1 rounded-full border border-border/60 bg-background/50 px-2.5 text-xs text-foreground/90 hover:bg-background"
-                      onClick={() => setStatusFilterMode('all')}
-                      title="Bỏ lọc trạng thái"
-                    >
-                      Trạng thái: {statusFilterLabel[statusFilterMode]}
-                      <X className="h-3.5 w-3.5 text-muted-foreground" />
-                    </button>
-                  ) : null}
-                  {hasPermissionFilter ? (
-                    <button
-                      type="button"
-                      className="inline-flex h-7 items-center gap-1 rounded-full border border-border/60 bg-background/50 px-2.5 text-xs text-foreground/90 hover:bg-background"
-                      onClick={() => setPermissionFilterMode('all')}
-                      title="Bỏ lọc quyền gửi"
-                    >
-                      Quyền gửi: {permissionFilterLabel[permissionFilterMode]}
-                      <X className="h-3.5 w-3.5 text-muted-foreground" />
-                    </button>
-                  ) : null}
-                  {hasMinMembersFilter ? (
-                    <button
-                      type="button"
-                      className="inline-flex h-7 items-center gap-1 rounded-full border border-border/60 bg-background/50 px-2.5 text-xs text-foreground/90 hover:bg-background"
-                      onClick={() => setMinMembersInput('')}
-                      title="Bỏ lọc tối thiểu thành viên"
-                    >
-                      Từ {minMembers} thành viên
-                      <X className="h-3.5 w-3.5 text-muted-foreground" />
-                    </button>
-                  ) : null}
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-7 rounded-full px-2.5 text-xs text-muted-foreground"
-                    onClick={() => {
-                      setSearchTerm('');
-                      setStatusFilterMode('all');
-                      setPermissionFilterMode('all');
-                      setMinMembersInput('');
-                    }}
-                  >
-                    Xóa tất cả bộ lọc
-                  </Button>
-                </div>
-              ) : null}
-            </div>
-            <div className="flex flex-wrap items-center gap-2 rounded-md border border-border/40 bg-muted/10 p-2">
-              <div className="text-xs text-muted-foreground">
-                Chọn nhanh (trong bộ lọc hiện tại): {selectedVisibleCount} đã chọn
-              </div>
-              {blockedVisibleCount > 0 ? (
-                <Badge variant="warning" className="h-6 rounded-full px-2 text-[11px]">
-                  {blockedVisibleCount} nhóm bị khóa chọn
-                </Badge>
-              ) : null}
-              <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  className="h-7 rounded-full px-3 text-xs"
-                  onClick={() => selectAllVisible(selectableVisibleIds)}
-                  disabled={selectableVisibleIds.length === 0}
-                >
-                  Chọn tất cả
-                </Button>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  className="h-7 rounded-full px-3 text-xs"
-                  onClick={() => deselectAllVisible(selectableVisibleIds)}
-                  disabled={selectableVisibleIds.length === 0}
-                >
-                  Bỏ chọn
-                </Button>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  className="h-7 rounded-full px-3 text-xs"
-                  onClick={() => invertSelectionVisible(selectableVisibleIds)}
-                  disabled={selectableVisibleIds.length === 0}
-                >
-                  Đảo chọn
-                </Button>
-              </div>
-            </div>
-          </div>
-
-          <table className="w-full table-fixed text-xs leading-5">
-            <colgroup>
-              <col className="w-[4%]" />
-              <col className="w-[34%]" />
-              <col className="w-[9%]" />
-              <col className="w-[24%]" />
-              <col className="w-[16%]" />
-              <col className="w-[13%]" />
-            </colgroup>
-            <thead>
-              <tr>
-                <th className="bg-muted/95 p-2 text-left">
-                  <Checkbox
-                    className={selectedCheckboxClass}
-                    checked={allVisibleSelected}
-                    disabled={selectableVisibleIds.length === 0}
-                    onCheckedChange={(checked) => {
-                      if (checked) {
-                        selectAllVisible(selectableVisibleIds);
-                        return;
-                      }
-                      deselectAllVisible(selectableVisibleIds);
-                    }}
-                  />
-                </th>
-                <th className="bg-muted/95 p-2 text-left">Nhóm</th>
-                <th className="bg-muted/95 p-2 text-right">Thành viên</th>
-                <th className="bg-muted/95 p-2 text-left">Chat ID</th>
-                <th className="bg-muted/95 p-2 text-left">Quyền gửi</th>
-                <th className="bg-muted/95 p-2 text-left">Trạng thái</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.length > 0 ? (
-                filtered.map((group) => {
-                  const targetStatus = groupStatusByChatId.get(group.chatId);
-                  const permissionState = resolveGroupPermissionState(group);
-                  const statusMeta = getGroupStatusMeta(targetStatus, permissionState);
-                  const isSelected = selectedIds.has(group.chatId);
-                  const isRunningRow = targetStatus === 'running';
-                  const isSelectionBlocked = permissionState === 'blocked';
-                  const permissionMeta =
-                    permissionState === 'allowed'
-                      ? { variant: 'success' as const, label: 'Gửi được' }
-                      : permissionState === 'blocked'
-                        ? { variant: 'destructive' as const, label: 'Không gửi được' }
-                        : { variant: 'warning' as const, label: 'Chỉ admin (cần kiểm tra)' };
-                  return (
-                    <tr
-                      key={group.chatId}
-                      ref={(element) => {
-                        if (element) {
-                          rowRefs.current.set(group.chatId, element);
-                          return;
-                        }
-                        rowRefs.current.delete(group.chatId);
-                      }}
-                      className={`border-t border-border/70 ${
-                        isRunningRow
-                          ? 'bg-amber-500/12 ring-1 ring-inset ring-amber-400/40'
-                          : isSelected
-                            ? 'bg-emerald-500/12 ring-1 ring-inset ring-emerald-400/35'
-                          : 'odd:bg-card even:bg-card/95'
-                      } ${isSelectionBlocked ? 'opacity-70' : ''} hover:bg-muted/20`}
-                    >
-                      <td className="bg-inherit p-2">
-                        <Checkbox
-                          className={selectedCheckboxClass}
-                          checked={selectedIds.has(group.chatId)}
-                          disabled={isSelectionBlocked}
-                          onCheckedChange={() => toggleSelect(group.chatId)}
-                        />
-                      </td>
-                      <td className="truncate p-2" title={group.name}>
-                        {group.name}
-                      </td>
-                      <td className="whitespace-nowrap p-2 text-right tabular-nums">{group.membersCount}</td>
-                      <td className="p-2">
-                        <div className="flex min-w-0 items-center gap-1.5">
-                          <span className="min-w-0 flex-1 truncate font-mono text-xs" title={group.chatId}>
-                            {formatChatId(group.chatId)}
-                          </span>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            className="h-6 px-1.5 text-xs"
-                            onClick={() => void copyChatId(group.chatId)}
-                            title="Sao chép chat id"
-                          >
-                            {copiedChatId === group.chatId ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-                          </Button>
-                        </div>
-                      </td>
-                      <td className="p-2">
-                        <Badge
-                          variant={permissionMeta.variant}
-                          className="whitespace-nowrap"
-                          title={isSelectionBlocked ? 'Nhóm này không hỗ trợ gửi từ API hiện tại.' : undefined}
+                  </div>
+                  {showAdvancedFilters ? (
+                    <div className="flex flex-wrap items-center gap-2 rounded-md border border-border/40 bg-muted/10 p-2">
+                      <Input
+                        type="number"
+                        min={0}
+                        step={1}
+                        value={minMembersInput}
+                        onChange={(event) => setMinMembersInput(event.target.value)}
+                        placeholder="Tối thiểu thành viên"
+                        className={`${panelTokens.control} w-[180px] rounded-md border-border/70 bg-background/70`}
+                      />
+                      {hasMinMembersFilter ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className={`${panelTokens.control} px-3`}
+                          onClick={() => setMinMembersInput('')}
                         >
-                          {permissionMeta.label}
-                        </Badge>
-                      </td>
-                      <td className="p-2">
-                        <Badge variant={statusMeta.variant}>{statusMeta.label}</Badge>
+                          Xóa mức tối thiểu
+                        </Button>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {hasAnyFilter ? (
+                    <div className="flex flex-wrap items-center gap-2">
+                      {hasSearchFilter ? (
+                        <button
+                          type="button"
+                          className="inline-flex h-7 items-center gap-1 rounded-full border border-border/60 bg-background/50 px-2.5 text-xs text-foreground/90 hover:bg-background"
+                          onClick={() => setSearchTerm('')}
+                          title="Bỏ bộ lọc từ khóa"
+                        >
+                          Từ khóa: {searchTerm.trim()}
+                          <X className="h-3.5 w-3.5 text-muted-foreground" />
+                        </button>
+                      ) : null}
+                      {hasStatusFilter ? (
+                        <button
+                          type="button"
+                          className="inline-flex h-7 items-center gap-1 rounded-full border border-border/60 bg-background/50 px-2.5 text-xs text-foreground/90 hover:bg-background"
+                          onClick={() => setStatusFilterMode('all')}
+                          title="Bỏ lọc trạng thái"
+                        >
+                          Trạng thái: {statusFilterLabel[statusFilterMode]}
+                          <X className="h-3.5 w-3.5 text-muted-foreground" />
+                        </button>
+                      ) : null}
+                      {hasPermissionFilter ? (
+                        <button
+                          type="button"
+                          className="inline-flex h-7 items-center gap-1 rounded-full border border-border/60 bg-background/50 px-2.5 text-xs text-foreground/90 hover:bg-background"
+                          onClick={() => setPermissionFilterMode('all')}
+                          title="Bỏ lọc quyền gửi"
+                        >
+                          Quyền gửi: {permissionFilterLabel[permissionFilterMode]}
+                          <X className="h-3.5 w-3.5 text-muted-foreground" />
+                        </button>
+                      ) : null}
+                      {hasMinMembersFilter ? (
+                        <button
+                          type="button"
+                          className="inline-flex h-7 items-center gap-1 rounded-full border border-border/60 bg-background/50 px-2.5 text-xs text-foreground/90 hover:bg-background"
+                          onClick={() => setMinMembersInput('')}
+                          title="Bỏ lọc tối thiểu thành viên"
+                        >
+                          Từ {minMembers} thành viên
+                          <X className="h-3.5 w-3.5 text-muted-foreground" />
+                        </button>
+                      ) : null}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 rounded-full px-2.5 text-xs text-muted-foreground"
+                        onClick={() => {
+                          setSearchTerm('');
+                          setStatusFilterMode('all');
+                          setPermissionFilterMode('all');
+                          setMinMembersInput('');
+                        }}
+                      >
+                        Xóa tất cả bộ lọc
+                      </Button>
+                    </div>
+                  ) : null}
+                </div>
+                <div className="flex flex-wrap items-center gap-2 rounded-md border border-border/40 bg-muted/10 p-2">
+                  <div className="text-sm text-muted-foreground">
+                    Chọn nhanh (trong bộ lọc hiện tại): {selectedVisibleCount} đã chọn
+                  </div>
+                  {blockedVisibleCount > 0 ? (
+                    <Badge variant="warning" className="h-6 rounded-full px-2 text-xs">
+                      {blockedVisibleCount} nhóm bị khóa chọn
+                    </Badge>
+                  ) : null}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      className={`${panelTokens.control} rounded-full px-3`}
+                      onClick={() => selectAllVisible(selectableVisibleIds)}
+                      disabled={selectableVisibleIds.length === 0}
+                    >
+                      Chọn tất cả
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      className={`${panelTokens.control} rounded-full px-3`}
+                      onClick={() => deselectAllVisible(selectableVisibleIds)}
+                      disabled={selectableVisibleIds.length === 0}
+                    >
+                      Bỏ chọn
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      className={`${panelTokens.control} rounded-full px-3`}
+                      onClick={() => invertSelectionVisible(selectableVisibleIds)}
+                      disabled={selectableVisibleIds.length === 0}
+                    >
+                      Đảo chọn
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              <table className="w-full table-fixed border-separate border-spacing-0 text-sm leading-5">
+                <colgroup>
+                  <col className="w-[4%]" />
+                  <col className="w-[34%]" />
+                  <col className="w-[9%]" />
+                  <col className="w-[24%]" />
+                  <col className="w-[16%]" />
+                  <col className="w-[13%]" />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th className="sticky z-20 bg-muted/95 p-2 text-left" style={{ top: tableHeaderTopOffset }}>
+                      <Checkbox
+                        className={selectedCheckboxClass}
+                        checked={allVisibleSelected}
+                        disabled={selectableVisibleIds.length === 0}
+                        onCheckedChange={(checked) => {
+                          if (checked) {
+                            selectAllVisible(selectableVisibleIds);
+                            return;
+                          }
+                          deselectAllVisible(selectableVisibleIds);
+                        }}
+                      />
+                    </th>
+                    <th className="sticky z-20 bg-muted/95 p-2 text-left" style={{ top: tableHeaderTopOffset }}>Nhóm</th>
+                    <th className="sticky z-20 bg-muted/95 p-2 text-right" style={{ top: tableHeaderTopOffset }}>Thành viên</th>
+                    <th className="sticky z-20 bg-muted/95 p-2 text-left" style={{ top: tableHeaderTopOffset }}>Chat ID</th>
+                    <th className="sticky z-20 bg-muted/95 p-2 text-left" style={{ top: tableHeaderTopOffset }}>Quyền gửi</th>
+                    <th className="sticky z-20 bg-muted/95 p-2 text-left" style={{ top: tableHeaderTopOffset }}>Trạng thái</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.length > 0 ? (
+                    filtered.map((group) => {
+                      const targetStatus = groupStatusByChatId.get(group.chatId);
+                      const permissionState = resolveGroupPermissionState(group);
+                      const statusMeta = getGroupStatusMeta(targetStatus, permissionState);
+                      const isSelected = selectedIds.has(group.chatId);
+                      const isRunningRow = targetStatus === 'running';
+                      const isSelectionBlocked = permissionState === 'blocked';
+                      const permissionMeta =
+                        permissionState === 'allowed'
+                          ? { variant: 'success' as const, label: 'Gửi được' }
+                          : permissionState === 'blocked'
+                            ? { variant: 'destructive' as const, label: 'Không gửi được' }
+                            : { variant: 'warning' as const, label: 'Chỉ admin (cần kiểm tra)' };
+                      return (
+                        <tr
+                          key={group.chatId}
+                          ref={(element) => {
+                            if (element) {
+                              rowRefs.current.set(group.chatId, element);
+                              return;
+                            }
+                            rowRefs.current.delete(group.chatId);
+                          }}
+                          className={`border-t border-border/70 ${
+                            isRunningRow
+                              ? 'bg-amber-500/12 ring-1 ring-inset ring-amber-400/40'
+                              : isSelected
+                                ? 'bg-emerald-500/12 ring-1 ring-inset ring-emerald-400/35'
+                              : 'odd:bg-card even:bg-card/95'
+                          } ${isSelectionBlocked ? 'opacity-70' : ''} hover:bg-muted/20`}
+                        >
+                          <td className="bg-inherit p-2">
+                            <Checkbox
+                              className={selectedCheckboxClass}
+                              checked={selectedIds.has(group.chatId)}
+                              disabled={isSelectionBlocked}
+                              onCheckedChange={() => toggleSelect(group.chatId)}
+                            />
+                          </td>
+                          <td className="truncate p-2" title={group.name}>
+                            {group.name}
+                          </td>
+                          <td className="whitespace-nowrap p-2 text-right tabular-nums">{group.membersCount}</td>
+                          <td className="p-2">
+                            <div className="flex min-w-0 items-center gap-1.5">
+                              <span className="min-w-0 flex-1 truncate font-mono text-xs" title={group.chatId}>
+                                {formatChatId(group.chatId)}
+                              </span>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 px-2 text-xs"
+                                onClick={() => void copyChatId(group.chatId)}
+                                title="Sao chép chat id"
+                              >
+                                {copiedChatId === group.chatId ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                              </Button>
+                            </div>
+                          </td>
+                          <td className="p-2">
+                            <Badge
+                              variant={permissionMeta.variant}
+                              className="whitespace-nowrap"
+                              title={isSelectionBlocked ? 'Nhóm này không hỗ trợ gửi từ API hiện tại.' : undefined}
+                            >
+                              {permissionMeta.label}
+                            </Badge>
+                          </td>
+                          <td className="p-2">
+                            <Badge variant={statusMeta.variant}>{statusMeta.label}</Badge>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  ) : (
+                    <tr className="border-t border-border/70">
+                      <td colSpan={6} className="p-3 text-center text-sm text-muted-foreground">
+                        Không có nhóm khớp bộ lọc hiện tại. Hãy nới từ khóa tìm kiếm hoặc số thành viên.
                       </td>
                     </tr>
-                  );
-                })
-              ) : groups.length > 0 ? (
-                <tr className="border-t border-border/70">
-                  <td colSpan={6} className="p-3 text-center text-xs text-muted-foreground">
-                    Không có nhóm khớp bộ lọc hiện tại. Hãy nới từ khóa tìm kiếm hoặc số thành viên.
-                  </td>
-                </tr>
-              ) : (
-                <tr className="border-t border-border/70">
-                  <td colSpan={6} className="p-3 text-center text-xs text-muted-foreground">
-                    Chưa có nhóm. Bấm "Tải danh sách nhóm" để lấy dữ liệu từ Evo API.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                  )}
+                </tbody>
+              </table>
+            </>
+          ) : (
+            <div className="flex h-full min-h-[420px] items-center justify-center p-4">
+              <div className="w-full max-w-xl rounded-md border border-dashed border-border/60 bg-muted/10 p-6 text-center">
+                <div className="mx-auto mb-3 inline-flex h-10 w-10 items-center justify-center rounded-full bg-muted/40 text-muted-foreground">
+                  <Users className="h-5 w-5" />
+                </div>
+                <p className="text-base font-semibold text-foreground">Chưa có dữ liệu nhóm</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Bấm &quot;Tải danh sách nhóm&quot; để đồng bộ dữ liệu từ Evo API trước khi lọc và chọn nhóm gửi.
+                </p>
+                <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+                  <Button
+                    onClick={onSyncGroups}
+                    className={`${panelTokens.control} min-w-[220px] rounded-md bg-primary/95 px-4 text-primary-foreground shadow-[0_8px_24px_-14px_hsl(var(--primary))] hover:bg-primary`}
+                    disabled={syncDisabledReason !== null}
+                    title={syncDisabledReason ?? 'Tải danh sách nhóm từ Evo API'}
+                  >
+                    <RefreshCw className={`mr-2 h-4 w-4 ${syncMutation.isPending ? 'animate-spin' : ''}`} />
+                    {syncMutation.isPending ? 'Đang tải danh sách...' : 'Tải danh sách nhóm'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>

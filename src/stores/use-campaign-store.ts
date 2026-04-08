@@ -423,7 +423,7 @@ export const useCampaignStore = create<CampaignStore>((set, get) => ({
     try {
       await queue.run();
       await get().loadHistory();
-      await get().restoreLatestCampaign();
+      await get().openCampaign(campaign.id);
     } catch (error) {
       const appError = toAppError(error, 'CAMPAIGN_RUN_FAILED');
       const finishedAt = dayjs().toISOString();
