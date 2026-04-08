@@ -95,7 +95,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       connectedInstanceName: settings?.instanceName ?? null,
       loading: false,
       badgeState: settings ? 'disconnected' : 'disconnected',
-      statusMessage: settings ? 'Đã tải cấu hình' : 'Hãy cấu hình kết nối'
+      statusMessage: settings ? 'Chưa kết nối' : 'Chưa có cấu hình kết nối'
     });
     useActivityLogStore.getState().pushUiLog({
       level: 'info',

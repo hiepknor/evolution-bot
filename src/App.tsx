@@ -1,9 +1,10 @@
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AppHeader } from '@/components/layout/app-header';
 import { AppErrorBoundary } from '@/components/layout/app-error-boundary';
 import { FooterStatus } from '@/components/layout/footer-status';
 import { QuickToast } from '@/components/layout/quick-toast';
 import { DashboardPage } from '@/pages/dashboard-page';
+import { ConnectionSettingsModal } from '@/components/connection/connection-settings-modal';
 import { initDb } from '@/lib/db/database';
 import { campaignsRepo } from '@/lib/db/repositories';
 import { useScreenFlag } from '@/hooks/use-screen-flag';
@@ -17,7 +18,10 @@ export default function App(): JSX.Element {
   const loadCampaignConfig = useCampaignStore((state) => state.loadConfig);
   const loadHistory = useCampaignStore((state) => state.loadHistory);
   const restoreLatestCampaign = useCampaignStore((state) => state.restoreLatestCampaign);
+  const badgeState = useSettingsStore((state) => state.badgeState);
   const screenFlag = useScreenFlag();
+  const [connectionSettingsOpen, setConnectionSettingsOpen] = useState(false);
+  const initializedRef = useRef(false);
 
   useEffect(() => {
     const boot = async () => {
@@ -36,12 +40,33 @@ export default function App(): JSX.Element {
     void boot();
   }, [loadCampaignConfig, loadGroups, loadHistory, loadSettings, restoreLatestCampaign]);
 
+  useEffect(() => {
+    if (initializedRef.current) {
+      return;
+    }
+
+    initializedRef.current = true;
+    if (badgeState !== 'connected') {
+      setConnectionSettingsOpen(true);
+    }
+  }, [badgeState]);
+
   return (
     <AppErrorBoundary>
       <div className={`flex h-screen flex-col bg-background text-foreground ${screenFlag}`} data-screen={screenFlag}>
         <QuickToast />
-        <AppHeader />
-        <DashboardPage screenFlag={screenFlag} />
+        <AppHeader
+          connectionSettingsOpen={connectionSettingsOpen}
+          onOpenConnectionSettings={() => setConnectionSettingsOpen(true)}
+        />
+        <DashboardPage
+          screenFlag={screenFlag}
+          onOpenConnectionSettings={() => setConnectionSettingsOpen(true)}
+        />
+        <ConnectionSettingsModal
+          open={connectionSettingsOpen}
+          onOpenChange={setConnectionSettingsOpen}
+        />
         <FooterStatus />
       </div>
     </AppErrorBoundary>
