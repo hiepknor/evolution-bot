@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils/cn';
 import { inferImageMimeType, readImageBytes } from '@/lib/media/image-path';
 import { composeFinalMessage } from '@/lib/templates/render-template';
 import { useComposerStore } from '@/stores/use-composer-store';
@@ -36,14 +37,19 @@ const toArrayBuffer = (bytes: Uint8Array): ArrayBuffer => {
   return copied.buffer;
 };
 
-export function PreviewPanel(): JSX.Element {
+interface PreviewPanelProps {
+  mode?: 'standalone' | 'embedded';
+}
+
+export function PreviewPanel({ mode = 'standalone' }: PreviewPanelProps): JSX.Element {
   const composer = useComposerStore();
   const { groups, selectedIds } = useGroupsStore();
   const [imageLoadFailed, setImageLoadFailed] = useState(false);
   const [imageLoadError, setImageLoadError] = useState<string | null>(null);
   const [previewImageSrc, setPreviewImageSrc] = useState('');
   const [previewReloadToken, setPreviewReloadToken] = useState(0);
-  const selectedGroup = groups.find((group) => selectedIds.has(group.chatId)) ?? groups[0];
+  const selectedGroup = groups.find((group) => selectedIds.has(group.chatId));
+  const previewContextGroup = selectedGroup ?? groups[0];
 
   useEffect(() => {
     setImageLoadFailed(false);
@@ -109,10 +115,10 @@ export function PreviewPanel(): JSX.Element {
     captionTemplate: composer.captionTemplate,
     footerText: composer.footerText,
     context: {
-      group_name: selectedGroup?.name,
-      members: selectedGroup?.membersCount,
+      group_name: previewContextGroup?.name,
+      members: previewContextGroup?.membersCount,
       index: 1,
-      rand_tag: buildPreviewRandomTag(selectedGroup?.chatId ?? 'preview')
+      rand_tag: buildPreviewRandomTag(previewContextGroup?.chatId ?? 'preview')
     }
   });
   const previewMessage = (rendered || composer.plainTextFallback || '').trim();
@@ -120,21 +126,33 @@ export function PreviewPanel(): JSX.Element {
   const charCount = previewMessage.length;
   const selectedGroupLabel = selectedGroup
     ? `${selectedGroup.name} (${formatChatId(selectedGroup.chatId)})`
-    : 'Chưa chọn nhóm (đang dùng preview giả lập)';
+    : previewContextGroup
+      ? `Chưa chọn nhóm (đang mô phỏng từ ${previewContextGroup.name})`
+      : 'Chưa chọn nhóm (đang dùng preview giả lập)';
   const selectedGroupTitle = selectedGroup
     ? `${selectedGroup.name} (${selectedGroup.chatId})`
-    : selectedGroupLabel;
+    : previewContextGroup
+      ? `${selectedGroupLabel} • ${previewContextGroup.chatId}`
+      : selectedGroupLabel;
   const selectedGroupCompactLine = selectedGroup
     ? `${selectedGroup.name} · ${compactChatId(selectedGroup.chatId)}`
-    : selectedGroupLabel;
+    : previewContextGroup
+      ? `Chưa chọn nhóm (mô phỏng: ${previewContextGroup.name} · ${compactChatId(previewContextGroup.chatId)})`
+      : selectedGroupLabel;
+  const embedded = mode === 'embedded';
 
   return (
-    <Card className="flex h-full min-h-0 flex-col overflow-hidden">
+    <Card className={cn('flex flex-col overflow-hidden', embedded ? '' : 'h-full min-h-0')}>
       <CardHeader className="pb-3">
         <CardTitle>Xem trước trực tiếp</CardTitle>
       </CardHeader>
-      <CardContent className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
-        <div className="space-y-2 rounded-md border border-border/60 bg-muted/10 p-2 text-xs text-muted-foreground">
+      <CardContent
+        className={cn(
+          'flex flex-col gap-3',
+          embedded ? '' : 'min-h-0 flex-1 overflow-hidden'
+        )}
+      >
+        <div className="space-y-2 rounded-md border border-border/60 bg-muted/10 p-2 text-sm text-muted-foreground">
           <div className="truncate" title={selectedGroupTitle}>
             Nhóm: {selectedGroupCompactLine}
           </div>
@@ -149,10 +167,27 @@ export function PreviewPanel(): JSX.Element {
           </div>
         </div>
 
-        <div className="grid min-h-0 flex-1 gap-3 overflow-hidden lg:grid-cols-[minmax(220px,38%)_minmax(0,1fr)]">
-          <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-md border border-border/55 bg-muted/10 p-3">
-            <div className="mb-2 text-xs font-medium text-muted-foreground">Ảnh xem trước</div>
-            <div className="flex min-h-0 flex-1 items-start justify-center overflow-hidden rounded-md bg-background/30 p-2">
+        <div
+          className={cn(
+            'grid gap-3',
+            embedded
+              ? 'grid-cols-1'
+              : 'min-h-0 flex-1 overflow-hidden lg:grid-cols-[minmax(220px,38%)_minmax(0,1fr)]'
+          )}
+        >
+          <div
+            className={cn(
+              'flex flex-col overflow-hidden rounded-md border border-border/55 bg-muted/10 p-3',
+              embedded ? 'min-h-[240px]' : 'h-full min-h-0'
+            )}
+          >
+            <div className="mb-2 text-sm font-medium text-muted-foreground">Ảnh xem trước</div>
+            <div
+              className={cn(
+                'flex items-start justify-center overflow-hidden rounded-md bg-background/30 p-2',
+                embedded ? 'min-h-[200px]' : 'min-h-0 flex-1'
+              )}
+            >
               {previewImageSrc && !imageLoadFailed ? (
                 <img
                   src={previewImageSrc}
@@ -162,7 +197,7 @@ export function PreviewPanel(): JSX.Element {
                   onLoad={() => setImageLoadFailed(false)}
                 />
               ) : (
-                <div className="flex h-full w-full flex-col items-center justify-center rounded-md border border-dashed border-border/60 text-xs text-muted-foreground">
+                <div className="flex h-full w-full flex-col items-center justify-center rounded-md border border-dashed border-border/60 text-sm text-muted-foreground">
                   <span>{composer.imagePath ? 'Không thể xem trước ảnh' : 'Chưa chọn ảnh'}</span>
                   {composer.imagePath ? (
                     <span className="mt-1 max-w-full truncate px-2 font-mono text-xs">
@@ -170,7 +205,7 @@ export function PreviewPanel(): JSX.Element {
                     </span>
                   ) : null}
                   {composer.imagePath && imageLoadError ? (
-                    <span className="mt-1 max-w-full px-2 text-center text-[11px] text-muted-foreground">
+                    <span className="mt-1 max-w-full px-2 text-center text-xs text-muted-foreground">
                       {imageLoadError}
                     </span>
                   ) : null}
@@ -179,7 +214,7 @@ export function PreviewPanel(): JSX.Element {
                       type="button"
                       size="sm"
                       variant="outline"
-                      className="mt-2 h-7 px-2 text-xs"
+                      className="mt-2 h-8 px-3 text-sm"
                       onClick={() => {
                         setImageLoadFailed(false);
                         setImageLoadError(null);
@@ -194,24 +229,34 @@ export function PreviewPanel(): JSX.Element {
             </div>
           </div>
 
-          <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-md border border-border/55 bg-muted/10 p-3">
-            <div className="mb-2 text-xs font-medium text-muted-foreground">Tin nhắn mô phỏng</div>
-            <div className="min-h-0 flex-1 overflow-auto rounded-xl border border-border/45 bg-background/30 p-2.5 sm:p-3">
+          <div
+            className={cn(
+              'flex flex-col overflow-hidden rounded-md border border-border/55 bg-muted/10 p-3',
+              embedded ? 'min-h-[240px]' : 'h-full min-h-0'
+            )}
+          >
+            <div className="mb-2 text-sm font-medium text-muted-foreground">Tin nhắn mô phỏng</div>
+            <div
+              className={cn(
+                'rounded-xl border border-border/45 bg-background/30 p-2.5 sm:p-3',
+                embedded ? 'min-h-[200px]' : 'min-h-0 flex-1 overflow-auto'
+              )}
+            >
               <div className="flex min-h-full flex-col justify-start">
                 {hasContent ? (
                   <div className="w-full max-w-[min(100%,540px)] rounded-[20px] rounded-bl-md border border-primary/35 bg-accent/35 px-3.5 py-3 shadow-[0_10px_30px_-22px_hsl(var(--primary))]">
                     <div className="mb-2 flex items-center justify-between gap-2">
-                      <span className="truncate text-[11px] font-semibold tracking-wide text-primary">
+                      <span className="truncate text-xs font-semibold tracking-wide text-primary">
                         Preview Broadcast
                       </span>
-                      <span className="text-[10px] text-muted-foreground">{charCount} ký tự</span>
+                      <span className="text-xs text-muted-foreground">{charCount} ký tự</span>
                     </div>
-                    <p className="whitespace-pre-line break-words text-[13px] leading-6 text-foreground sm:text-sm">
+                    <p className="whitespace-pre-line break-words text-sm leading-6 text-foreground">
                       {previewMessage}
                     </p>
                   </div>
                 ) : (
-                  <div className="flex h-full min-h-0 flex-col items-center justify-center gap-2 text-xs text-muted-foreground">
+                  <div className="flex h-full min-h-0 flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
                     <span>Nội dung xem trước đang trống.</span>
                     <span>Hãy nhập mẫu nội dung hoặc chọn chiến dịch để dùng lại nội dung.</span>
                   </div>

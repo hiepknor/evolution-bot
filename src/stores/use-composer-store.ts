@@ -141,6 +141,8 @@ interface ComposerStore extends ComposerState {
   setEmojiMode: (mode: EmojiMode) => void;
   applyCampaignContent: (campaign: Campaign) => void;
   clearContentSource: () => void;
+  removeRecentFile: (path: string) => void;
+  removeRecentFiles: (paths: string[]) => void;
   reset: () => void;
   clearDraft: () => void;
 }
@@ -250,6 +252,42 @@ export const useComposerStore = create<ComposerStore>((set, get) => ({
 
   clearContentSource: () => {
     set({ contentSource: null });
+  },
+
+  removeRecentFile: (path) => {
+    const normalizedPath = normalizeImagePath(path);
+    if (!normalizedPath) {
+      return;
+    }
+
+    const current = get();
+    const nextRecentFiles = current.recentFiles.filter((item) => item !== normalizedPath);
+    if (nextRecentFiles.length === current.recentFiles.length) {
+      return;
+    }
+
+    set({ recentFiles: nextRecentFiles });
+    persistDraft(mergeDraftState(current, { recentFiles: nextRecentFiles }));
+  },
+
+  removeRecentFiles: (paths) => {
+    const normalizedSet = new Set(
+      paths
+        .map((item) => normalizeImagePath(item))
+        .filter((item): item is string => Boolean(item))
+    );
+    if (normalizedSet.size === 0) {
+      return;
+    }
+
+    const current = get();
+    const nextRecentFiles = current.recentFiles.filter((item) => !normalizedSet.has(item));
+    if (nextRecentFiles.length === current.recentFiles.length) {
+      return;
+    }
+
+    set({ recentFiles: nextRecentFiles });
+    persistDraft(mergeDraftState(current, { recentFiles: nextRecentFiles }));
   },
 
   reset: () => {
