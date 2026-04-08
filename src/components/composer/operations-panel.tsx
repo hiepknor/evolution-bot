@@ -522,10 +522,13 @@ export function OperationsPanel(): JSX.Element {
         <div className={panelTokens.section}>
           <button
             type="button"
-            className="h-9 w-full rounded-md border border-border/40 bg-background/35 px-3 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-muted/30"
+            className="flex h-9 w-full items-center justify-between rounded-md border border-border/40 bg-background/35 px-3 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-muted/30"
             onClick={() => setShowAdvanced((prev) => !prev)}
           >
-            Cấu hình nâng cao {showAdvanced ? '▲' : '▼'}
+            <span>Cấu hình nâng cao</span>
+            <span aria-hidden="true" className="pl-3 text-xs">
+              {showAdvanced ? '-' : '+'}
+            </span>
           </button>
 
           {showAdvanced ? (

@@ -714,10 +714,13 @@ export function ComposerPanel(): JSX.Element {
             <div className="flex items-center justify-between gap-2">
               <button
                 type="button"
-                className="min-w-0 flex-1 rounded-md border border-border/60 bg-muted/20 px-3 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-muted/35 h-9"
+                className="flex h-9 min-w-0 flex-1 items-center justify-between rounded-md border border-border/60 bg-muted/20 px-3 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-muted/35"
                 onClick={() => setShowAdvancedContent((prev) => !prev)}
               >
-                Nội dung nâng cao {showAdvancedContent ? '▲' : '▼'}
+                <span>Nội dung nâng cao</span>
+                <span aria-hidden="true" className="pl-3 text-xs">
+                  {showAdvancedContent ? '-' : '+'}
+                </span>
               </button>
               <Badge variant={hasAdvancedContent ? 'success' : 'secondary'} className="shrink-0">
                 {hasAdvancedContent ? 'Đang dùng' : 'Chưa dùng'}

@@ -492,9 +492,9 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
           Đồng bộ lần cuối: {lastSyncedAt ? dayjs(lastSyncedAt).format('YYYY-MM-DD HH:mm:ss') : 'chưa có'}
         </div>
       </CardHeader>
-      <CardContent className={`flex min-h-0 flex-1 flex-col overflow-hidden ${panelTokens.cardContent}`}>
+      <CardContent className={`flex min-h-0 flex-1 flex-col overflow-hidden pt-3 ${panelTokens.cardContent}`}>
         <div className={panelTokens.section}>
-          <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center justify-start gap-1.5">
               {hasGroups || hasAnyFilter ? (
                 <Badge variant="outline" className="h-6 gap-1 rounded-full px-2">
@@ -516,7 +516,7 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
                 </span>
               </Badge>
             </div>
-            <div className="flex flex-wrap items-center justify-end gap-2">
+            <div className="flex flex-wrap items-center justify-end gap-3">
               <Button
                 onClick={onSyncGroups}
                 className={`${panelTokens.control} w-auto min-w-[220px] rounded-md bg-primary/95 px-4 text-primary-foreground shadow-[0_8px_24px_-14px_hsl(var(--primary))] hover:bg-primary`}
@@ -539,7 +539,7 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
             </div>
           </div>
           {syncDisabledReason ? (
-            <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-md border border-warning/35 bg-warning/10 px-3 py-2 text-sm text-warning">
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-md border border-warning/35 bg-warning/10 px-3 py-2 text-sm text-warning">
               <span>{syncDisabledReason}</span>
               {canOpenConnectionSettingsFromWarning ? (
                 <button
@@ -561,8 +561,8 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
                 ref={stickyFiltersRef}
                 className="sticky top-0 z-30 space-y-3 border-b border-border/55 bg-card/95 p-3 backdrop-blur-sm"
               >
-                <div className="space-y-2">
-                  <div className="flex flex-wrap items-center gap-2">
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-center gap-3">
                     <div className="relative min-w-[240px] flex-1">
                       <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                       <Input
@@ -626,7 +626,7 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
                     </Button>
                   </div>
                   {showAdvancedFilters ? (
-                    <div className="flex flex-wrap items-center gap-2 rounded-md border border-border/40 bg-muted/10 p-2">
+                    <div className="flex flex-wrap items-center gap-3 rounded-md border border-border/40 bg-muted/10 p-3">
                       <Input
                         type="number"
                         min={0}
@@ -649,7 +649,7 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
                     </div>
                   ) : null}
                   {hasAnyFilter ? (
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-3">
                       {hasSearchFilter ? (
                         <button
                           type="button"
@@ -710,7 +710,7 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
                     </div>
                   ) : null}
                 </div>
-                <div className="flex flex-wrap items-center gap-2 rounded-md border border-border/40 bg-muted/10 p-2">
+                <div className="flex flex-wrap items-center gap-3 rounded-md border border-border/40 bg-muted/10 p-3">
                   <div className="text-sm text-muted-foreground">
                     Chọn nhanh (trong bộ lọc hiện tại): {selectedVisibleCount} đã chọn
                   </div>
@@ -719,7 +719,7 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
                       {blockedVisibleCount} nhóm bị khóa chọn
                     </Badge>
                   ) : null}
-                  <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-3">
                     <Button
                       size="sm"
                       variant="secondary"
