@@ -1,6 +1,6 @@
 [package]
 name = "evo-broadcast-control"
-version = "1.0.0"
+version = "1.0.2"
 description = "Evo Broadcast Control"
 authors = ["you"]
 license = "MIT"
