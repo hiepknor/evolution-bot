@@ -2,6 +2,7 @@ import { HttpClient } from '@/lib/api/http-client';
 import type {
   EvolutionGroupDto,
   EvolutionInstanceDto,
+  EvolutionSettingsDto,
   EvolutionSendMediaRequest,
   EvolutionSendTextRequest
 } from '@/lib/types/api';
@@ -30,6 +31,7 @@ interface EvolutionProviderOptions {
 const ADMIN_PERMISSION_DEEP_CHECK_MAX_GROUPS = 180;
 const ADMIN_PERMISSION_DEEP_CHECK_TIMEOUT_MS = 12_000;
 const INSTANCE_LOOKUP_TIMEOUT_MS = 8_000;
+const SETTINGS_LOOKUP_TIMEOUT_MS = 6_000;
 const MISSING_GROUP_RETENTION_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 const GENERIC_MISSING_GROUP_RETENTION_WINDOW_MS = 24 * 60 * 60 * 1000;
 const REFERENCE_FALLBACK_GROUP_LIMIT = 600;
@@ -398,6 +400,44 @@ const addIdentifierVariants = (target: Set<string>, value: unknown): void => {
 
 const extractInstanceName = (entry: EvolutionInstanceDto): string => {
   return String(entry.name ?? entry.instanceName ?? entry.instance?.instanceName ?? '').trim();
+};
+
+const extractGroupsIgnoreFlag = (value: unknown): boolean | null => {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value !== 0;
+  }
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (!normalized) {
+      return null;
+    }
+    if (['true', '1', 'yes', 'y', 'on', 'enabled'].includes(normalized)) {
+      return true;
+    }
+    if (['false', '0', 'no', 'n', 'off', 'disabled'].includes(normalized)) {
+      return false;
+    }
+  }
+
+  const obj = asRecord(value);
+  if (!obj) {
+    return null;
+  }
+
+  const direct = extractGroupsIgnoreFlag(obj.groups_ignore);
+  if (direct !== null) {
+    return direct;
+  }
+
+  const nestedSettings = extractGroupsIgnoreFlag(obj.settings);
+  if (nestedSettings !== null) {
+    return nestedSettings;
+  }
+
+  return null;
 };
 
 const buildSelfIdentifiers = (entry: EvolutionInstanceDto): Set<string> => {
@@ -848,12 +888,43 @@ export class EvolutionProvider implements MessagingProvider {
     return [];
   }
 
+  async fetchInstanceSyncSettings(instanceName: string): Promise<{ groupsIgnore: boolean | null }> {
+    const trimmedInstanceName = instanceName.trim();
+    if (!trimmedInstanceName) {
+      throw new AppError('INVALID_INSTANCE', 'Instance name is required');
+    }
+    const encodedInstanceName = encodeURIComponent(trimmedInstanceName);
+    const settingsData = await this.client.request<EvolutionSettingsDto | Record<string, unknown>>({
+      path: `/settings/find/${encodedInstanceName}`,
+      timeoutMs: SETTINGS_LOOKUP_TIMEOUT_MS
+    });
+    return {
+      groupsIgnore: extractGroupsIgnoreFlag(settingsData)
+    };
+  }
+
   async fetchGroups(instanceName: string, options?: FetchGroupsOptions): Promise<Group[]> {
     const trimmedInstanceName = instanceName.trim();
     if (!trimmedInstanceName) {
       throw new AppError('INVALID_INSTANCE', 'Instance name is required');
     }
     const encodedInstanceName = encodeURIComponent(trimmedInstanceName);
+
+    // Guardrail from Evolution settings docs: when groups_ignore=true, group-related sync can be incomplete.
+    try {
+      const syncSettings = await this.fetchInstanceSyncSettings(trimmedInstanceName);
+      if (syncSettings.groupsIgnore === true) {
+        throw new AppError(
+          'FETCH_GROUPS_DISABLED_BY_SETTINGS',
+          'Instance đang bật groups_ignore=true. Vui lòng tắt Groups Ignore trong Evolution API rồi đồng bộ lại.'
+        );
+      }
+    } catch (error) {
+      if (error instanceof AppError && error.code === 'FETCH_GROUPS_DISABLED_BY_SETTINGS') {
+        throw error;
+      }
+      // Best-effort preflight: continue when settings endpoint is unavailable.
+    }
 
     const requests: Array<{
       source: RemoteGroupFetchSource;
@@ -1107,36 +1178,95 @@ export class EvolutionProvider implements MessagingProvider {
     };
 
     const primaryRequests = requests.filter((req) => req.variant === 'primary');
-    const firstPass = await runSyncPass(1, primaryRequests);
+    const passSummaries: Array<Awaited<ReturnType<typeof runSyncPass>>> = [];
+    let nextPassIndex = 1;
 
-    const unresolvedAfterFirstPass = countReferenceFallbackGroups();
+    const runAndStore = async (
+      activeRequests: Array<{
+        source: RemoteGroupFetchSource;
+        variant: SourceRequestVariant;
+        path: string;
+        method?: 'GET' | 'POST';
+        body?: unknown;
+        timeoutMs?: number;
+      }>
+    ): Promise<Awaited<ReturnType<typeof runSyncPass>> | null> => {
+      if (activeRequests.length === 0) {
+        return null;
+      }
+      const summary = await runSyncPass(nextPassIndex, activeRequests);
+      passSummaries.push(summary);
+      nextPassIndex += 1;
+      return summary;
+    };
+
+    const fetchAllPrimaryRequests = primaryRequests.filter((req) => req.source === 'fetchAllGroups');
+    const findChatsPrimaryRequests = primaryRequests.filter((req) => req.source === 'findChats');
+    const findContactsPrimaryRequests = primaryRequests.filter((req) => req.source === 'findContacts');
+
+    const fetchAllPrimarySummary = await runAndStore(fetchAllPrimaryRequests);
+
+    if (!hadRateLimitFailure) {
+      await runAndStore(findChatsPrimaryRequests);
+    }
+
+    const missingCachedAfterCore = (options?.previousGroups ?? []).filter(
+      (group) => group.chatId.endsWith('@g.us') && !groupsByChatId.has(group.chatId)
+    ).length;
+    const unresolvedAfterCore = countReferenceFallbackGroups();
+    const fetchAllAccepted = fetchAllPrimarySummary?.sourceAccepted.get('fetchAllGroups') ?? 0;
+    const findChatsAccepted = passSummaries
+      .map((summary) => summary.sourceAccepted.get('findChats') ?? 0)
+      .reduce((sum, value) => sum + value, 0);
+    const shouldRunFindContactsPrimary =
+      !hadRateLimitFailure &&
+      (
+        groupsByChatId.size === 0 ||
+        unresolvedAfterCore > 0 ||
+        missingCachedAfterCore > 0 ||
+        fetchAllAccepted === 0 ||
+        findChatsAccepted === 0
+      );
+
+    if (shouldRunFindContactsPrimary) {
+      await runAndStore(findContactsPrimaryRequests);
+    }
+
     const sourcesNeedingFallback = new Set<RemoteGroupFetchSource>();
 
-    for (const source of remoteGroupSources) {
-      const attempts = firstPass.sourceAttempts.get(source) ?? 0;
-      if (attempts === 0) {
-        continue;
-      }
-      const successes = firstPass.sourceSuccesses.get(source) ?? 0;
-      const accepted = firstPass.sourceAccepted.get(source) ?? 0;
-      if (successes === 0 || accepted === 0) {
-        sourcesNeedingFallback.add(source);
+    for (const summary of passSummaries) {
+      for (const source of remoteGroupSources) {
+        const attempts = summary.sourceAttempts.get(source) ?? 0;
+        if (attempts === 0) {
+          continue;
+        }
+        const successes = summary.sourceSuccesses.get(source) ?? 0;
+        const accepted = summary.sourceAccepted.get(source) ?? 0;
+        if (successes === 0 || accepted === 0) {
+          sourcesNeedingFallback.add(source);
+        }
       }
     }
 
-    if (unresolvedAfterFirstPass > 0) {
+    if (fetchAllAccepted === 0) {
+      sourcesNeedingFallback.add('findChats');
+    }
+
+    if (countReferenceFallbackGroups() > 0) {
       sourcesNeedingFallback.add('fetchAllGroups');
     }
 
-    const shouldRunSecondPass =
+    const shouldRunFallbackPass =
       GROUP_SYNC_MAX_PASSES >= 2 &&
       !hadRateLimitFailure &&
       sourcesNeedingFallback.size > 0;
 
-    if (shouldRunSecondPass) {
-      const fallbackRequests = requests.filter((req) => req.variant === 'fallback');
+    if (shouldRunFallbackPass) {
+      const fallbackRequests = requests.filter(
+        (req) => req.variant === 'fallback' && sourcesNeedingFallback.has(req.source)
+      );
       if (fallbackRequests.length > 0) {
-        await runSyncPass(2, fallbackRequests);
+        await runSyncPass(nextPassIndex, fallbackRequests);
       }
     }
 

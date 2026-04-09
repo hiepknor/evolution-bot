@@ -1,4 +1,8 @@
-import type { FetchGroupsOptions, MessagingProvider } from '@/lib/providers/messaging-provider';
+import type {
+  FetchGroupsOptions,
+  InstanceSyncSettings,
+  MessagingProvider
+} from '@/lib/providers/messaging-provider';
 import { mockGroups } from '@/mocks/mock-groups';
 import type {
   ConnectionState,
@@ -26,6 +30,11 @@ export class MockProvider implements MessagingProvider {
       ...group,
       syncedAt: new Date().toISOString()
     }));
+  }
+
+  async fetchInstanceSyncSettings(_instanceName: string): Promise<InstanceSyncSettings> {
+    await sleep(120);
+    return { groupsIgnore: false };
   }
 
   async sendMediaToChat(

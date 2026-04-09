@@ -31,6 +31,11 @@ export interface EvolutionInstanceDto {
   [key: string]: unknown;
 }
 
+export interface EvolutionSettingsDto {
+  groups_ignore?: boolean;
+  [key: string]: unknown;
+}
+
 export interface EvolutionSendMediaRequest {
   number: string;
   mediatype: 'image';

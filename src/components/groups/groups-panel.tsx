@@ -73,6 +73,8 @@ const permissionFilterLabel: Record<GroupPermissionFilterMode, string> = {
 
 const connectionRequiredMessage =
   'Chưa kết nối instance. Mở cài đặt kết nối (icon bánh răng) và bấm "Kết nối".';
+const groupsIgnoreRequiredMessage =
+  'Instance đang bật groups_ignore=true. Tắt cờ này trong Evolution API trước khi tải danh sách nhóm.';
 
 const getGroupStatusMeta = (
   status: TargetStatus | undefined,
@@ -142,6 +144,7 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
   const rowRefs = useRef<Map<string, HTMLTableRowElement>>(new Map());
   const lastAutoScrolledChatIdRef = useRef<string | null>(null);
   const [tableHeaderTopOffset, setTableHeaderTopOffset] = useState(0);
+  const [groupsIgnoreFlag, setGroupsIgnoreFlag] = useState<boolean | null>(null);
 
   const {
     groups,
@@ -158,6 +161,53 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
   } = useGroupsStore();
 
   const deferredSearchTerm = useDeferredValue(searchTerm);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const currentSettings = settings;
+    const canCheckGroupsIgnore =
+      Boolean(currentSettings?.baseUrl) &&
+      Boolean(currentSettings?.apiKey) &&
+      Boolean(currentSettings?.instanceName) &&
+      currentSettings?.providerMode === 'evolution' &&
+      badgeState === 'connected';
+
+    if (!canCheckGroupsIgnore) {
+      setGroupsIgnoreFlag(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const provider = createProvider({
+      mode: currentSettings.providerMode,
+      baseUrl: currentSettings.baseUrl,
+      apiKey: currentSettings.apiKey
+    });
+
+    void provider.fetchInstanceSyncSettings(currentSettings.instanceName).then(
+      (syncSettings) => {
+        if (cancelled) {
+          return;
+        }
+        setGroupsIgnoreFlag(syncSettings.groupsIgnore);
+      },
+      () => {
+        if (cancelled) {
+          return;
+        }
+        setGroupsIgnoreFlag(null);
+      }
+    );
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    badgeState,
+    settings
+  ]);
 
   useEffect(() => {
     if (searchInputComposing) {
@@ -484,6 +534,8 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
       const message = error instanceof AppError
         ? error.code === 'FETCH_GROUPS_RATE_LIMITED'
           ? `${error.message} Hệ thống giữ nguyên danh sách nhóm cache hiện tại để tránh mất dữ liệu.`
+          : error.code === 'FETCH_GROUPS_DISABLED_BY_SETTINGS'
+            ? `${error.message} Mở Evolution API > Settings của instance và đặt groups_ignore=false.`
           : `${error.message}${error.status ? ` (HTTP ${error.status})` : ''}`
         : error instanceof Error
           ? error.message
@@ -532,6 +584,9 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
     if (clearCacheMutation.isPending) {
       return 'Đang xóa cache nhóm. Vui lòng chờ hoàn tất.';
     }
+    if (groupsIgnoreFlag === true) {
+      return groupsIgnoreRequiredMessage;
+    }
     if (settings?.providerMode !== 'mock' && badgeState !== 'connected') {
       return connectionRequiredMessage;
     }
@@ -539,6 +594,7 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
   }, [
     badgeState,
     clearCacheMutation.isPending,
+    groupsIgnoreFlag,
     settings?.providerMode,
     syncMutation.isPending
   ]);
@@ -692,6 +748,15 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
                   Chính sách: {listModeShortLabel} ({campaignConfig.blacklist.length})
                 </span>
               </Badge>
+              {groupsIgnoreFlag === true ? (
+                <Badge
+                  variant="destructive"
+                  className="h-6 max-w-[260px] items-center justify-start rounded-full px-2 text-xs"
+                  title="groups_ignore=true: Evolution API đang bỏ qua group messages"
+                >
+                  <span className="truncate">groups_ignore: ON</span>
+                </Badge>
+              ) : null}
               <Badge
                 variant="outline"
                 className="h-6 max-w-[300px] items-center justify-start rounded-full px-2 text-xs"

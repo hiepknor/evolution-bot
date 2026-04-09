@@ -828,6 +828,31 @@ describe('evolution provider', () => {
     expect(groups[0]?.raw?.[GROUP_PERMISSION_HINT_KEY]).toBe(false);
   });
 
+  it('fails fast when groups_ignore is enabled in instance settings', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input);
+      const method = String(init?.method ?? 'GET').toUpperCase();
+
+      if (url.includes('/settings/find/instance-a') && method === 'GET') {
+        return {
+          ok: true,
+          text: async () => JSON.stringify({ groups_ignore: true })
+        } as Response;
+      }
+
+      return {
+        ok: false,
+        status: 404,
+        text: async () => JSON.stringify({ message: 'Not found' })
+      } as Response;
+    });
+
+    const provider = new EvolutionProvider({ baseUrl: 'http://localhost:8080', apiKey: 'x' });
+    await expect(provider.fetchGroups('instance-a')).rejects.toMatchObject({
+      code: 'FETCH_GROUPS_DISABLED_BY_SETTINGS'
+    });
+  });
+
   it('returns failed connection result on HTTP error', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       ok: false,
