@@ -153,24 +153,15 @@ export function HistoryPanel(): JSX.Element {
                 role="tab"
                 aria-selected={filter === key}
                 aria-pressed={filter === key}
-                className={`h-9 whitespace-nowrap rounded-md px-3 text-sm font-medium transition-colors ${
+                className={`inline-flex h-9 min-w-[112px] shrink-0 items-center justify-center whitespace-nowrap rounded-md px-3 py-0 text-sm font-medium leading-none tabular-nums transition-colors ${
                   filter === key
                     ? 'bg-primary text-primary-foreground'
                     : 'text-foreground/85 hover:bg-muted/50'
                 }`}
                 onClick={() => setFilter(key)}
               >
-                {filter === key ? (
-                  <>
-                    <span className="sm:hidden">{`${filterShortLabel[key]} (${filterCounts[key]})`}</span>
-                    <span className="hidden sm:inline">{`${filterLabel[key]} (${filterCounts[key]})`}</span>
-                  </>
-                ) : (
-                  <>
-                    <span className="sm:hidden">{filterShortLabel[key]}</span>
-                    <span className="hidden sm:inline">{filterLabel[key]}</span>
-                  </>
-                )}
+                <span className="sm:hidden">{`${filterShortLabel[key]} (${filterCounts[key]})`}</span>
+                <span className="hidden sm:inline">{`${filterLabel[key]} (${filterCounts[key]})`}</span>
               </button>
             ))}
           </div>

@@ -1,5 +1,5 @@
 import dayjs from 'dayjs';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { Check, Copy, RefreshCw, Search, SlidersHorizontal, Users, X } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,15 +15,15 @@ import { settingsRepo } from '@/lib/db/repositories';
 import {
   applyGroupFilters,
   createGroupStatusMap,
-  countGroupsByMode,
   createSentStatusMap,
   parseMinMembersInput,
   resolveGroupPermissionState,
+  type GroupFilterCounts,
   type GroupPermissionState,
   type GroupPermissionFilterMode,
   type GroupStatusFilterMode
 } from '@/lib/groups/group-filtering';
-import type { TargetStatus } from '@/lib/types/domain';
+import type { Group, TargetStatus } from '@/lib/types/domain';
 import { useGroupsStore } from '@/stores/use-groups-store';
 import { useSettingsStore } from '@/stores/use-settings-store';
 import { useCampaignStore } from '@/stores/use-campaign-store';
@@ -36,8 +36,27 @@ const formatChatId = (chatId: string): string => {
   return `${chatId.slice(0, 12)}...${chatId.slice(-8)}`;
 };
 
+const formatUnnamedGroupLabel = (chatId: string): string => {
+  const base = chatId.split('@')[0]?.trim() ?? '';
+  if (!base) {
+    return 'Nhóm chưa có tên';
+  }
+  const suffix = base.slice(-4);
+  return `Nhóm chưa có tên (${suffix})`;
+};
+
+const normalizeChatId = (chatId: string): string => chatId.trim().toLowerCase();
+
+const resolveEffectivePermissionState = (
+  group: Group,
+  blockedByList: boolean
+): GroupPermissionState => (blockedByList ? 'blocked' : resolveGroupPermissionState(group));
+
 const selectedCheckboxClass =
   'border-border/70 data-[state=checked]:border-emerald-400/90 data-[state=checked]:bg-emerald-500/90 data-[state=checked]:text-emerald-50';
+
+const stickyHeaderCellClass =
+  'sticky z-20 bg-card px-3 py-2.5 align-middle text-sm font-semibold text-foreground shadow-[inset_0_-1px_0_hsl(var(--border))]';
 
 const statusFilterLabel: Record<GroupStatusFilterMode, string> = {
   all: 'Tất cả',
@@ -57,8 +76,13 @@ const connectionRequiredMessage =
 
 const getGroupStatusMeta = (
   status: TargetStatus | undefined,
-  permissionState: GroupPermissionState
+  permissionState: GroupPermissionState,
+  blockedByList = false
 ): { label: string; variant: 'secondary' | 'success' | 'warning' | 'destructive' } => {
+  if ((!status || status === 'pending') && blockedByList) {
+    return { label: 'Bị chặn', variant: 'warning' };
+  }
+
   if ((!status || status === 'pending') && permissionState === 'blocked') {
     return { label: 'Không gửi được', variant: 'destructive' };
   }
@@ -102,12 +126,16 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
   const targets = useCampaignStore((state) => state.targets);
   const queueProgress = useCampaignStore((state) => state.queueProgress);
   const running = useCampaignStore((state) => state.running);
+  const campaignConfig = useCampaignStore((state) => state.config);
+  const setCampaignConfig = useCampaignStore((state) => state.setConfig);
   const pushUiLog = useActivityLogStore((state) => state.pushUiLog);
   const [statusFilterMode, setStatusFilterMode] = useState<GroupStatusFilterMode>('all');
   const [permissionFilterMode, setPermissionFilterMode] = useState<GroupPermissionFilterMode>('all');
   const [minMembersInput, setMinMembersInput] = useState('');
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [copiedChatId, setCopiedChatId] = useState<string | null>(null);
+  const [searchInputValue, setSearchInputValue] = useState('');
+  const [searchInputComposing, setSearchInputComposing] = useState(false);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const tableViewportRef = useRef<HTMLDivElement | null>(null);
   const stickyFiltersRef = useRef<HTMLDivElement | null>(null);
@@ -129,50 +157,159 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
     clearCache: clearGroupsCache
   } = useGroupsStore();
 
+  const deferredSearchTerm = useDeferredValue(searchTerm);
+
+  useEffect(() => {
+    if (searchInputComposing) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      if (searchTerm !== searchInputValue) {
+        setSearchTerm(searchInputValue);
+      }
+    }, 120);
+    return () => window.clearTimeout(timer);
+  }, [searchInputComposing, searchInputValue, searchTerm, setSearchTerm]);
+
+  const clearSearchInput = () => {
+    setSearchInputValue('');
+    setSearchTerm('');
+  };
+
   const minMembers = useMemo(() => parseMinMembersInput(minMembersInput), [minMembersInput]);
   const groupStatusByChatId = useMemo(() => createGroupStatusMap(targets), [targets]);
   const sentStatusByChatId = useMemo(() => createSentStatusMap(targets), [targets]);
+  const normalizedConfigList = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          campaignConfig.blacklist
+            .map((item) => normalizeChatId(item))
+            .filter(Boolean)
+        )
+      ),
+    [campaignConfig.blacklist]
+  );
+  const configuredListSet = useMemo(
+    () => new Set(normalizedConfigList),
+    [normalizedConfigList]
+  );
+  const listPolicyByChatId = useMemo(() => {
+    const policy = new Map<string, { listed: boolean; blocked: boolean; reason: string | null }>();
+    for (const group of groups) {
+      const listed = configuredListSet.has(normalizeChatId(group.chatId));
+      const blocked = campaignConfig.whitelistMode ? !listed : listed;
+      const reason = blocked
+        ? campaignConfig.whitelistMode
+          ? 'Ngoài danh sách cho phép'
+          : 'Nằm trong danh sách chặn'
+        : null;
+      policy.set(group.chatId, { listed, blocked, reason });
+    }
+    return policy;
+  }, [campaignConfig.whitelistMode, configuredListSet, groups]);
   const filteredForCounts = useMemo(
     () =>
       applyGroupFilters({
         groups,
-        searchTerm,
+        searchTerm: deferredSearchTerm,
         minMembers,
         statusFilterMode: 'all',
         permissionFilterMode: 'all',
         sentStatusByChatId
       }),
-    [groups, minMembers, searchTerm, sentStatusByChatId]
+    [deferredSearchTerm, groups, minMembers, sentStatusByChatId]
   );
-  const filtered = useMemo(
+  const filteredBySearchAndStatus = useMemo(
     () =>
       applyGroupFilters({
         groups,
-        searchTerm,
+        searchTerm: deferredSearchTerm,
         minMembers,
         statusFilterMode,
-        permissionFilterMode,
+        permissionFilterMode: 'all',
         sentStatusByChatId
       }),
-    [groups, minMembers, permissionFilterMode, searchTerm, sentStatusByChatId, statusFilterMode]
+    [deferredSearchTerm, groups, minMembers, sentStatusByChatId, statusFilterMode]
   );
+  const filtered = useMemo(
+    () =>
+      filteredBySearchAndStatus.filter((group) => {
+        const blockedByList = listPolicyByChatId.get(group.chatId)?.blocked === true;
+        const permissionState = resolveEffectivePermissionState(group, blockedByList);
+        if (permissionFilterMode === 'all') {
+          return true;
+        }
+        return permissionState === permissionFilterMode;
+      }),
+    [filteredBySearchAndStatus, listPolicyByChatId, permissionFilterMode]
+  );
+  const filterCounts = useMemo<GroupFilterCounts>(() => {
+    let sent = 0;
+    let pending = 0;
+    let allowed = 0;
+    let blocked = 0;
+    let unknown = 0;
+
+    for (const group of filteredForCounts) {
+      if (sentStatusByChatId.get(group.chatId) === true) {
+        sent += 1;
+      } else {
+        pending += 1;
+      }
+
+      const blockedByList = listPolicyByChatId.get(group.chatId)?.blocked === true;
+      const permissionState = resolveEffectivePermissionState(group, blockedByList);
+      if (permissionState === 'allowed') {
+        allowed += 1;
+      } else if (permissionState === 'blocked') {
+        blocked += 1;
+      } else {
+        unknown += 1;
+      }
+    }
+
+    return {
+      status: {
+        all: filteredForCounts.length,
+        sent,
+        pending
+      },
+      permission: {
+        all: filteredForCounts.length,
+        allowed,
+        blocked,
+        unknown
+      }
+    };
+  }, [filteredForCounts, listPolicyByChatId, sentStatusByChatId]);
   const selectableVisibleIds = useMemo(
     () =>
       filtered
-        .filter((group) => resolveGroupPermissionState(group) !== 'blocked')
+        .filter((group) => {
+          const blockedByList = listPolicyByChatId.get(group.chatId)?.blocked === true;
+          return resolveEffectivePermissionState(group, blockedByList) !== 'blocked';
+        })
         .map((group) => group.chatId),
-    [filtered]
+    [filtered, listPolicyByChatId]
   );
 
   const allVisibleSelected =
     selectableVisibleIds.length > 0 && selectableVisibleIds.every((chatId) => selectedIds.has(chatId));
   const selectedVisibleCount = selectableVisibleIds.filter((chatId) => selectedIds.has(chatId)).length;
   const blockedVisibleCount = filtered.length - selectableVisibleIds.length;
-  const filterCounts = useMemo(
-    () => countGroupsByMode(filteredForCounts, sentStatusByChatId),
-    [filteredForCounts, sentStatusByChatId]
+  const listBlockedVisibleCount = useMemo(
+    () => filtered.filter((group) => listPolicyByChatId.get(group.chatId)?.blocked === true).length,
+    [filtered, listPolicyByChatId]
   );
-  const hasSearchFilter = searchTerm.trim().length > 0;
+  const listModeLabel = campaignConfig.whitelistMode ? 'Danh sách cho phép' : 'Danh sách chặn';
+  const listModeShortLabel = campaignConfig.whitelistMode ? 'DS cho phép' : 'DS chặn';
+  const blockedSelectionLabel = `Khóa chọn: ${blockedVisibleCount}`;
+  const blockedSelectionDetail =
+    listBlockedVisibleCount > 0
+      ? `${blockedVisibleCount} nhóm bị khóa chọn; ${listBlockedVisibleCount} do ${listModeShortLabel}.`
+      : `${blockedVisibleCount} nhóm bị khóa chọn do quyền gửi.`;
+  const hasSearchFilter = searchInputValue.trim().length > 0;
   const hasMinMembersFilter = minMembers !== null;
   const hasStatusFilter = statusFilterMode !== 'all';
   const hasPermissionFilter = permissionFilterMode !== 'all';
@@ -216,6 +353,27 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
         message: 'Không thể sao chép chat id. Vui lòng cấp quyền clipboard.'
       });
     }
+  };
+  const toggleListMembership = (chatId: string) => {
+    const normalizedChatId = normalizeChatId(chatId);
+    const nextList = new Set(normalizedConfigList);
+    const listed = nextList.has(normalizedChatId);
+    if (listed) {
+      nextList.delete(normalizedChatId);
+    } else {
+      nextList.add(normalizedChatId);
+    }
+    const nextBlacklist = Array.from(nextList).sort((a, b) =>
+      a.localeCompare(b, 'en', { sensitivity: 'base' })
+    );
+    setCampaignConfig({ blacklist: nextBlacklist });
+
+    const listLabel = campaignConfig.whitelistMode ? 'danh sách cho phép' : 'danh sách chặn';
+    const actionLabel = listed ? 'gỡ khỏi' : 'thêm vào';
+    pushUiLog({
+      level: 'info',
+      message: `Đã ${actionLabel} ${chatId} ${listLabel}.`
+    });
   };
 
   const syncMutation = useMutation({
@@ -292,7 +450,7 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
       availableInstances,
       configuredInstance
     }) => {
-      setSearchTerm('');
+      clearSearchInput();
       if (!count) {
         const normalizedConfigured = configuredInstance.trim().toLowerCase();
         const normalizedAvailable = availableInstances.map((item) => item.trim().toLowerCase());
@@ -396,8 +554,29 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
     clearCacheMutation.mutate();
   };
 
-  const canOpenConnectionSettingsFromWarning =
-    syncDisabledReason === connectionRequiredMessage && Boolean(onOpenConnectionSettings);
+  const isConnectionBlocked = syncDisabledReason === connectionRequiredMessage;
+  const canTriggerConnectionCta = isConnectionBlocked && Boolean(onOpenConnectionSettings);
+  const syncButtonDisabled =
+    syncMutation.isPending ||
+    clearCacheMutation.isPending ||
+    (isConnectionBlocked && !canTriggerConnectionCta);
+  const syncButtonTitle = isConnectionBlocked
+    ? canTriggerConnectionCta
+      ? 'Mở cài đặt kết nối'
+      : connectionRequiredMessage
+    : syncDisabledReason ?? 'Tải danh sách nhóm từ Evo API';
+  const syncButtonLabel = syncMutation.isPending
+    ? 'Đang tải danh sách...'
+    : isConnectionBlocked
+      ? 'Mở cài đặt kết nối'
+      : 'Tải danh sách nhóm';
+  const handleSyncPrimaryAction = () => {
+    if (isConnectionBlocked) {
+      onOpenConnectionSettings?.();
+      return;
+    }
+    onSyncGroups();
+  };
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -505,6 +684,15 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
                 </Badge>
               ) : null}
               <Badge
+                variant={campaignConfig.whitelistMode ? 'warning' : 'secondary'}
+                className="h-6 max-w-[260px] items-center justify-start rounded-full px-2 text-xs"
+                title={`Chính sách gửi: ${listModeLabel.toLowerCase()} (${campaignConfig.blacklist.length} chat id)`}
+              >
+                <span className="truncate">
+                  Chính sách: {listModeShortLabel} ({campaignConfig.blacklist.length})
+                </span>
+              </Badge>
+              <Badge
                 variant="outline"
                 className="h-6 max-w-[300px] items-center justify-start rounded-full px-2 text-xs"
                 title={
@@ -520,13 +708,18 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
             </div>
             <div className="flex flex-wrap items-center justify-end gap-2">
               <Button
-                onClick={onSyncGroups}
-                className={`${panelTokens.control} w-auto min-w-[220px] rounded-md bg-primary/95 px-4 text-primary-foreground shadow-[0_8px_24px_-14px_hsl(var(--primary))] hover:bg-primary`}
-                disabled={syncDisabledReason !== null}
-                title={syncDisabledReason ?? 'Tải danh sách nhóm từ Evo API'}
+                variant={isConnectionBlocked ? 'outline' : 'default'}
+                onClick={handleSyncPrimaryAction}
+                className={`${panelTokens.control} w-auto min-w-[220px] rounded-md px-4 ${
+                  isConnectionBlocked
+                    ? 'border-warning/45 bg-warning/10 text-warning hover:bg-warning/15'
+                    : 'bg-primary/95 text-primary-foreground shadow-[0_8px_24px_-14px_hsl(var(--primary))] hover:bg-primary'
+                }`}
+                disabled={syncButtonDisabled}
+                title={syncButtonTitle}
               >
                 <RefreshCw className={`mr-2 h-4 w-4 ${syncMutation.isPending ? 'animate-spin' : ''}`} />
-                {syncMutation.isPending ? 'Đang tải danh sách...' : 'Tải danh sách nhóm'}
+                {syncButtonLabel}
               </Button>
               {hasGroups ? (
                 <Button
@@ -541,27 +734,18 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
             </div>
           </div>
           {syncDisabledReason ? (
-            <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-md border border-warning/35 bg-warning/10 px-3 py-2 text-sm text-warning">
+            <div className="mt-2 rounded-md border border-warning/35 bg-warning/10 px-3 py-2 text-sm text-warning">
               <span>{syncDisabledReason}</span>
-              {canOpenConnectionSettingsFromWarning ? (
-                <button
-                  type="button"
-                  className={`${panelTokens.control} rounded-md border border-warning/45 bg-warning/15 px-3 font-medium text-warning transition-colors hover:bg-warning/25`}
-                  onClick={onOpenConnectionSettings}
-                >
-                  Mở cài đặt
-                </button>
-              ) : null}
             </div>
           ) : null}
         </div>
 
-        <div ref={tableViewportRef} className="min-h-0 flex-1 overflow-auto rounded-md border border-border">
+        <div ref={tableViewportRef} className="isolate min-h-0 flex-1 overflow-auto rounded-md border border-border">
           {hasGroups ? (
             <>
               <div
                 ref={stickyFiltersRef}
-                className="sticky top-0 z-30 space-y-3 border-b border-border/55 bg-card/95 p-3 backdrop-blur-sm"
+                className="sticky top-0 z-30 space-y-3 border-b border-border/70 bg-card p-3"
               >
                 <div className="space-y-2">
                   <div className="flex flex-wrap items-center gap-2">
@@ -569,11 +753,32 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
                       <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                       <Input
                         ref={searchInputRef}
-                        value={searchTerm}
-                        onChange={(event) => setSearchTerm(event.target.value)}
+                        value={searchInputValue}
+                        onChange={(event) => setSearchInputValue(event.target.value)}
+                        onCompositionStart={() => setSearchInputComposing(true)}
+                        onCompositionEnd={(event) => {
+                          const nextValue = event.currentTarget.value;
+                          setSearchInputComposing(false);
+                          setSearchInputValue(nextValue);
+                          setSearchTerm(nextValue);
+                        }}
                         placeholder="Tìm theo tên nhóm hoặc chat id"
-                        className={`${panelTokens.control} rounded-md border-border/70 bg-background/70 pl-9`}
+                        className={`${panelTokens.control} rounded-md border-border/70 bg-background/70 pl-9 pr-9 placeholder:text-foreground/55`}
                       />
+                      {searchInputValue.trim().length > 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            clearSearchInput();
+                            searchInputRef.current?.focus();
+                          }}
+                          className="absolute right-2 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                          title="Xóa từ khóa tìm kiếm"
+                          aria-label="Xóa từ khóa tìm kiếm"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      ) : null}
                     </div>
                     <div className="inline-flex items-center rounded-md border border-border/60 bg-background/40 p-0.5">
                       <Button
@@ -655,18 +860,18 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
                       {hasSearchFilter ? (
                         <button
                           type="button"
-                          className="inline-flex h-7 items-center gap-1 rounded-full border border-border/60 bg-background/50 px-2.5 text-xs text-foreground/90 hover:bg-background"
-                          onClick={() => setSearchTerm('')}
+                          className="inline-flex h-7 items-center gap-1 rounded-full border border-border/60 bg-background/50 px-2.5 text-xs text-foreground hover:bg-background"
+                          onClick={clearSearchInput}
                           title="Bỏ bộ lọc từ khóa"
                         >
-                          Từ khóa: {searchTerm.trim()}
+                          Từ khóa: {searchInputValue.trim()}
                           <X className="h-3.5 w-3.5 text-muted-foreground" />
                         </button>
                       ) : null}
                       {hasStatusFilter ? (
                         <button
                           type="button"
-                          className="inline-flex h-7 items-center gap-1 rounded-full border border-border/60 bg-background/50 px-2.5 text-xs text-foreground/90 hover:bg-background"
+                          className="inline-flex h-7 items-center gap-1 rounded-full border border-border/60 bg-background/50 px-2.5 text-xs text-foreground hover:bg-background"
                           onClick={() => setStatusFilterMode('all')}
                           title="Bỏ lọc trạng thái"
                         >
@@ -677,7 +882,7 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
                       {hasPermissionFilter ? (
                         <button
                           type="button"
-                          className="inline-flex h-7 items-center gap-1 rounded-full border border-border/60 bg-background/50 px-2.5 text-xs text-foreground/90 hover:bg-background"
+                          className="inline-flex h-7 items-center gap-1 rounded-full border border-border/60 bg-background/50 px-2.5 text-xs text-foreground hover:bg-background"
                           onClick={() => setPermissionFilterMode('all')}
                           title="Bỏ lọc quyền gửi"
                         >
@@ -688,7 +893,7 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
                       {hasMinMembersFilter ? (
                         <button
                           type="button"
-                          className="inline-flex h-7 items-center gap-1 rounded-full border border-border/60 bg-background/50 px-2.5 text-xs text-foreground/90 hover:bg-background"
+                          className="inline-flex h-7 items-center gap-1 rounded-full border border-border/60 bg-background/50 px-2.5 text-xs text-foreground hover:bg-background"
                           onClick={() => setMinMembersInput('')}
                           title="Bỏ lọc tối thiểu thành viên"
                         >
@@ -701,7 +906,7 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
                         variant="ghost"
                         className="h-7 rounded-full px-2.5 text-xs text-muted-foreground"
                         onClick={() => {
-                          setSearchTerm('');
+                          clearSearchInput();
                           setStatusFilterMode('all');
                           setPermissionFilterMode('all');
                           setMinMembersInput('');
@@ -713,12 +918,16 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
                   ) : null}
                 </div>
                 <div className="flex flex-wrap items-center gap-2 rounded-md border border-border/40 bg-muted/10 p-2">
-                  <div className="text-sm text-muted-foreground">
+                  <div className="text-sm text-foreground/85">
                     Chọn nhanh (trong bộ lọc hiện tại): {selectedVisibleCount} đã chọn
                   </div>
                   {blockedVisibleCount > 0 ? (
-                    <Badge variant="warning" className="h-6 rounded-full px-2 text-xs">
-                      {blockedVisibleCount} nhóm bị khóa chọn
+                    <Badge
+                      variant="warning"
+                      className="h-6 rounded-full px-2 text-xs"
+                      title={blockedSelectionDetail}
+                    >
+                      {blockedSelectionLabel}
                     </Badge>
                   ) : null}
                   <div className="flex flex-wrap items-center gap-2">
@@ -753,18 +962,20 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
                 </div>
               </div>
 
-              <table className="w-full table-fixed border-separate border-spacing-0 text-sm leading-5">
+              <table className="relative z-0 w-full table-fixed border-separate border-spacing-0 text-sm leading-5">
                 <colgroup>
                   <col className="w-[4%]" />
-                  <col className="w-[34%]" />
+                  <col className="w-[27%]" />
                   <col className="w-[9%]" />
-                  <col className="w-[24%]" />
-                  <col className="w-[16%]" />
-                  <col className="w-[13%]" />
+                  <col className="w-[21%]" />
+                  <col className="w-[6%]" />
+                  <col className="w-[12%]" />
+                  <col className="w-[11%]" />
+                  <col className="w-[10%]" />
                 </colgroup>
                 <thead>
                   <tr>
-                    <th className="sticky z-20 bg-muted/95 p-2 text-left" style={{ top: tableHeaderTopOffset }}>
+                    <th className={`${stickyHeaderCellClass} whitespace-nowrap text-left`} style={{ top: tableHeaderTopOffset }}>
                       <Checkbox
                         className={selectedCheckboxClass}
                         checked={allVisibleSelected}
@@ -778,28 +989,64 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
                         }}
                       />
                     </th>
-                    <th className="sticky z-20 bg-muted/95 p-2 text-left" style={{ top: tableHeaderTopOffset }}>Nhóm</th>
-                    <th className="sticky z-20 bg-muted/95 p-2 text-right" style={{ top: tableHeaderTopOffset }}>Thành viên</th>
-                    <th className="sticky z-20 bg-muted/95 p-2 text-left" style={{ top: tableHeaderTopOffset }}>Chat ID</th>
-                    <th className="sticky z-20 bg-muted/95 p-2 text-left" style={{ top: tableHeaderTopOffset }}>Quyền gửi</th>
-                    <th className="sticky z-20 bg-muted/95 p-2 text-left" style={{ top: tableHeaderTopOffset }}>Trạng thái</th>
+                    <th className={`${stickyHeaderCellClass} whitespace-nowrap text-left`} style={{ top: tableHeaderTopOffset }}>Nhóm</th>
+                    <th className={`${stickyHeaderCellClass} whitespace-nowrap text-right`} style={{ top: tableHeaderTopOffset }}>Thành viên</th>
+                    <th className={`${stickyHeaderCellClass} whitespace-nowrap text-left`} style={{ top: tableHeaderTopOffset }}>Chat ID</th>
+                    <th className={`${stickyHeaderCellClass} whitespace-nowrap text-center`} style={{ top: tableHeaderTopOffset }}>
+                      <Copy className="mx-auto h-4 w-4 text-muted-foreground" />
+                    </th>
+                    <th className={`${stickyHeaderCellClass} whitespace-nowrap text-left`} style={{ top: tableHeaderTopOffset }}>Quyền gửi</th>
+                    <th className={`${stickyHeaderCellClass} whitespace-nowrap text-center`} style={{ top: tableHeaderTopOffset }}>Hành động</th>
+                    <th className={`${stickyHeaderCellClass} whitespace-nowrap text-center`} style={{ top: tableHeaderTopOffset }}>Trạng thái</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filtered.length > 0 ? (
                     filtered.map((group) => {
                       const targetStatus = groupStatusByChatId.get(group.chatId);
-                      const permissionState = resolveGroupPermissionState(group);
-                      const statusMeta = getGroupStatusMeta(targetStatus, permissionState);
+                      const listPolicy = listPolicyByChatId.get(group.chatId) ?? {
+                        listed: false,
+                        blocked: false,
+                        reason: null
+                      };
+                      const permissionState = resolveEffectivePermissionState(group, listPolicy.blocked);
+                      const statusMeta = getGroupStatusMeta(targetStatus, permissionState, listPolicy.blocked);
                       const isSelected = selectedIds.has(group.chatId);
                       const isRunningRow = targetStatus === 'running';
                       const isSelectionBlocked = permissionState === 'blocked';
+                      const normalizedName = group.name.trim();
+                      const normalizedChatId = normalizeChatId(group.chatId);
+                      const hasDistinctName =
+                        normalizedName.length > 0 && normalizeChatId(normalizedName) !== normalizedChatId;
+                      const unnamedGroupLabel = formatUnnamedGroupLabel(group.chatId);
+                      const displayName = hasDistinctName ? group.name : unnamedGroupLabel;
                       const permissionMeta =
                         permissionState === 'allowed'
                           ? { variant: 'success' as const, label: 'Gửi được' }
                           : permissionState === 'blocked'
-                            ? { variant: 'destructive' as const, label: 'Không gửi được' }
-                            : { variant: 'warning' as const, label: 'Chỉ admin (cần kiểm tra)' };
+                            ? {
+                                variant: listPolicy.blocked ? 'warning' as const : 'destructive' as const,
+                                label: listPolicy.blocked ? 'Bị chặn' : 'Không gửi được'
+                              }
+                            : { variant: 'warning' as const, label: 'Cần kiểm tra' };
+                      const listActionLabel = campaignConfig.whitelistMode
+                        ? listPolicy.listed
+                          ? 'Gỡ DS cho phép'
+                          : 'Thêm DS cho phép'
+                        : listPolicy.listed
+                          ? 'Bỏ chặn'
+                          : 'Chặn';
+                      const listActionTitle = campaignConfig.whitelistMode
+                        ? listPolicy.listed
+                          ? 'Gỡ chat id khỏi danh sách cho phép'
+                          : 'Thêm chat id vào danh sách cho phép'
+                        : listPolicy.listed
+                          ? 'Gỡ chat id khỏi danh sách chặn'
+                          : 'Thêm chat id vào danh sách chặn';
+                      const isUnblockAction = !campaignConfig.whitelistMode && listPolicy.listed;
+                      const listActionClass = isUnblockAction
+                        ? 'h-7 rounded-full border-warning/45 bg-warning/10 px-2.5 text-xs text-warning hover:bg-warning/20'
+                        : 'h-7 rounded-full border-border/65 bg-background/30 px-2.5 text-xs text-foreground/90 hover:bg-background/60';
                       return (
                         <tr
                           key={group.chatId}
@@ -818,7 +1065,7 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
                               : 'odd:bg-card even:bg-card/95'
                           } ${isSelectionBlocked ? 'opacity-70' : ''} hover:bg-muted/20`}
                         >
-                          <td className="bg-inherit p-2">
+                          <td className="bg-inherit px-3 py-2.5 align-middle">
                             <Checkbox
                               className={selectedCheckboxClass}
                               checked={selectedIds.has(group.chatId)}
@@ -826,45 +1073,67 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
                               onCheckedChange={() => toggleSelect(group.chatId)}
                             />
                           </td>
-                          <td className="truncate p-2" title={group.name}>
-                            {group.name}
+                          <td className="truncate px-3 py-2.5 align-middle text-sm" title={displayName}>
+                            <span className={hasDistinctName ? 'text-foreground' : 'text-muted-foreground'}>
+                              {displayName}
+                            </span>
                           </td>
-                          <td className="whitespace-nowrap p-2 text-right tabular-nums">{group.membersCount}</td>
-                          <td className="p-2">
-                            <div className="flex min-w-0 items-center gap-1.5">
-                              <span className="min-w-0 flex-1 truncate font-mono text-xs" title={group.chatId}>
-                                {formatChatId(group.chatId)}
-                              </span>
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="ghost"
-                                className="h-7 px-2 text-xs"
-                                onClick={() => void copyChatId(group.chatId)}
-                                title="Sao chép chat id"
-                              >
-                                {copiedChatId === group.chatId ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-                              </Button>
-                            </div>
+                          <td className="whitespace-nowrap px-3 py-2.5 align-middle text-right text-sm tabular-nums">{group.membersCount}</td>
+                          <td className="px-3 py-2.5 align-middle">
+                            <span className="block min-w-0 truncate font-mono text-sm" title={group.chatId}>
+                              {formatChatId(group.chatId)}
+                            </span>
                           </td>
-                          <td className="p-2">
+                          <td className="px-3 py-2.5 align-middle text-center">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              className="h-8 px-2.5 text-xs"
+                              onClick={() => void copyChatId(group.chatId)}
+                              title="Sao chép chat id"
+                            >
+                              {copiedChatId === group.chatId ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                            </Button>
+                          </td>
+                          <td className="px-3 py-2.5 align-middle">
                             <Badge
                               variant={permissionMeta.variant}
                               className="whitespace-nowrap"
-                              title={isSelectionBlocked ? 'Nhóm này không hỗ trợ gửi từ API hiện tại.' : undefined}
+                              title={
+                                listPolicy.blocked
+                                  ? listPolicy.reason ?? 'Nhóm này bị chặn bởi cấu hình danh sách.'
+                                  : isSelectionBlocked
+                                    ? 'Nhóm này đang bị chặn theo quyền gửi.'
+                                    : undefined
+                              }
                             >
                               {permissionMeta.label}
                             </Badge>
                           </td>
-                          <td className="p-2">
-                            <Badge variant={statusMeta.variant}>{statusMeta.label}</Badge>
+                          <td className="px-3 py-2.5 align-middle text-center">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className={listActionClass}
+                              onClick={() => toggleListMembership(group.chatId)}
+                              title={listActionTitle}
+                            >
+                              {listActionLabel}
+                            </Button>
+                          </td>
+                          <td className="px-3 py-2.5 align-middle text-center">
+                            <Badge variant={statusMeta.variant} className="whitespace-nowrap">
+                              {statusMeta.label}
+                            </Badge>
                           </td>
                         </tr>
                       );
                     })
                   ) : (
                     <tr className="border-t border-border/70">
-                      <td colSpan={6} className="p-3 text-center text-sm text-muted-foreground">
+                      <td colSpan={8} className="p-3 text-center text-sm text-muted-foreground">
                         Không có nhóm khớp bộ lọc hiện tại. Hãy nới từ khóa tìm kiếm hoặc số thành viên.
                       </td>
                     </tr>

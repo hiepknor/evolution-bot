@@ -1,5 +1,5 @@
 import dayjs from 'dayjs';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { Search, Trash2, X } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -107,6 +107,8 @@ const localizeLogMessage = (raw: string): string => {
 export function ActivityLogPanel({ onRequestClose, className }: ActivityLogPanelProps = {}): JSX.Element {
   const [filter, setFilter] = useState<LogFilter>('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [searchInputValue, setSearchInputValue] = useState('');
+  const [searchInputComposing, setSearchInputComposing] = useState(false);
   const [liveEtaMs, setLiveEtaMs] = useState<number>(0);
   const [recentRunSnapshot, setRecentRunSnapshot] = useState<{
     status: RecentRunStatus;
@@ -114,6 +116,7 @@ export function ActivityLogPanel({ onRequestClose, className }: ActivityLogPanel
     total: number;
     campaignName?: string;
   } | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
   const etaAnchorRef = useRef<{ baseMs: number; startedAtMs: number } | null>(null);
   const prevRunningRef = useRef<boolean>(false);
   const clearSnapshotTimerRef = useRef<number | null>(null);
@@ -132,8 +135,22 @@ export function ActivityLogPanel({ onRequestClose, className }: ActivityLogPanel
       ),
     [campaignLogs, uiLogs]
   );
+  const deferredSearchTerm = useDeferredValue(searchTerm);
+
+  useEffect(() => {
+    if (searchInputComposing) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      if (searchTerm !== searchInputValue) {
+        setSearchTerm(searchInputValue);
+      }
+    }, 120);
+    return () => window.clearTimeout(timer);
+  }, [searchInputComposing, searchInputValue, searchTerm]);
+
   const filteredLogs = useMemo(() => {
-    const term = searchTerm.trim().toLowerCase();
+    const term = deferredSearchTerm.trim().toLowerCase();
     return logs.filter((log) => {
       if (filter !== 'all' && log.level !== filter) {
         return false;
@@ -143,7 +160,7 @@ export function ActivityLogPanel({ onRequestClose, className }: ActivityLogPanel
       }
       return localizeLogMessage(log.message).toLowerCase().includes(term);
     });
-  }, [filter, logs, searchTerm]);
+  }, [deferredSearchTerm, filter, logs]);
   const filterCounts = useMemo(() => {
     const counts: Record<LogFilter, number> = {
       all: logs.length,
@@ -337,11 +354,34 @@ export function ActivityLogPanel({ onRequestClose, className }: ActivityLogPanel
           <div className="relative min-w-0">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
-              className={cn('rounded-md border-border/70 bg-background/40 pl-9 pr-3', panelTokens.control)}
+              ref={searchInputRef}
+              value={searchInputValue}
+              onChange={(event) => setSearchInputValue(event.target.value)}
+              onCompositionStart={() => setSearchInputComposing(true)}
+              onCompositionEnd={(event) => {
+                const nextValue = event.currentTarget.value;
+                setSearchInputComposing(false);
+                setSearchInputValue(nextValue);
+                setSearchTerm(nextValue);
+              }}
+              className={cn('rounded-md border-border/70 bg-background/40 pl-9 pr-9', panelTokens.control)}
               placeholder="Tìm theo nội dung log"
             />
+            {searchInputValue.trim().length > 0 ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchInputValue('');
+                  setSearchTerm('');
+                  searchInputRef.current?.focus();
+                }}
+                className="absolute right-2 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                title="Xóa từ khóa tìm log"
+                aria-label="Xóa từ khóa tìm log"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            ) : null}
           </div>
           <div className="flex items-center gap-2">
             <div
@@ -357,24 +397,15 @@ export function ActivityLogPanel({ onRequestClose, className }: ActivityLogPanel
                     role="tab"
                     aria-selected={filter === key}
                     aria-pressed={filter === key}
-                    className={`h-9 whitespace-nowrap rounded-md px-3 text-sm font-medium transition-colors ${
+                    className={`inline-flex h-9 min-w-[112px] shrink-0 items-center justify-center whitespace-nowrap rounded-md px-3 py-0 text-sm font-medium leading-none tabular-nums transition-colors ${
                       filter === key
                         ? 'bg-primary text-primary-foreground'
                         : 'text-foreground/85 hover:bg-muted/50'
                     }`}
                     onClick={() => setFilter(key)}
                   >
-                    {filter === key ? (
-                      <>
-                        <span className="sm:hidden">{`${filterShortLabel[key]} (${filterCounts[key]})`}</span>
-                        <span className="hidden sm:inline">{`${filterLabel[key]} (${filterCounts[key]})`}</span>
-                      </>
-                    ) : (
-                      <>
-                        <span className="sm:hidden">{filterShortLabel[key]}</span>
-                        <span className="hidden sm:inline">{filterLabel[key]}</span>
-                      </>
-                    )}
+                    <span className="sm:hidden">{`${filterShortLabel[key]} (${filterCounts[key]})`}</span>
+                    <span className="hidden sm:inline">{`${filterLabel[key]} (${filterCounts[key]})`}</span>
                   </button>
                 ))}
               </div>

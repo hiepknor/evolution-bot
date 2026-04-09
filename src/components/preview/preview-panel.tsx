@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { panelTokens } from '@/components/layout/panel-tokens';
 import { cn } from '@/lib/utils/cn';
 import { inferImageMimeType, readImageBytes } from '@/lib/media/image-path';
 import { composeFinalMessage } from '@/lib/templates/render-template';
@@ -143,17 +144,17 @@ export function PreviewPanel({ mode = 'standalone' }: PreviewPanelProps): JSX.El
 
   return (
     <Card className={cn('flex flex-col overflow-hidden', embedded ? '' : 'h-full min-h-0')}>
-      <CardHeader className="pb-3">
+      <CardHeader className={panelTokens.cardHeader}>
         <CardTitle>Xem trước trực tiếp</CardTitle>
       </CardHeader>
       <CardContent
         className={cn(
-          'flex flex-col gap-3',
+          `flex flex-col ${panelTokens.cardContent}`,
           embedded ? '' : 'min-h-0 flex-1 overflow-hidden'
         )}
       >
-        <div className="space-y-2 rounded-md border border-border/60 bg-muted/10 p-2 text-sm text-muted-foreground">
-          <div className="truncate" title={selectedGroupTitle}>
+        <div className="space-y-2 rounded-md border border-border/60 bg-muted/10 p-3 text-sm leading-5 text-muted-foreground">
+          <div className="truncate text-sm" title={selectedGroupTitle}>
             Nhóm: {selectedGroupCompactLine}
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -181,10 +182,10 @@ export function PreviewPanel({ mode = 'standalone' }: PreviewPanelProps): JSX.El
               embedded ? 'min-h-[240px]' : 'h-full min-h-0'
             )}
           >
-            <div className="mb-2 text-sm font-medium text-muted-foreground">Ảnh xem trước</div>
+            <div className={cn(panelTokens.sectionTitle, 'mb-2 text-muted-foreground')}>Ảnh xem trước</div>
             <div
               className={cn(
-                'flex items-start justify-center overflow-hidden rounded-md bg-background/30 p-2',
+                'flex items-start justify-center overflow-hidden rounded-md bg-background/30 p-3',
                 embedded ? 'min-h-[200px]' : 'min-h-0 flex-1'
               )}
             >
@@ -235,10 +236,10 @@ export function PreviewPanel({ mode = 'standalone' }: PreviewPanelProps): JSX.El
               embedded ? 'min-h-[240px]' : 'h-full min-h-0'
             )}
           >
-            <div className="mb-2 text-sm font-medium text-muted-foreground">Tin nhắn mô phỏng</div>
+            <div className={cn(panelTokens.sectionTitle, 'mb-2 text-muted-foreground')}>Tin nhắn mô phỏng</div>
             <div
               className={cn(
-                'rounded-xl border border-border/45 bg-background/30 p-2.5 sm:p-3',
+                'rounded-xl border border-border/45 bg-background/30 p-3',
                 embedded ? 'min-h-[200px]' : 'min-h-0 flex-1 overflow-auto'
               )}
             >
@@ -246,12 +247,12 @@ export function PreviewPanel({ mode = 'standalone' }: PreviewPanelProps): JSX.El
                 {hasContent ? (
                   <div className="w-full max-w-[min(100%,540px)] rounded-[20px] rounded-bl-md border border-primary/35 bg-accent/35 px-3.5 py-3 shadow-[0_10px_30px_-22px_hsl(var(--primary))]">
                     <div className="mb-2 flex items-center justify-between gap-2">
-                      <span className="truncate text-xs font-semibold tracking-wide text-primary">
+                      <span className="truncate text-sm font-semibold tracking-wide text-primary">
                         Preview Broadcast
                       </span>
-                      <span className="text-xs text-muted-foreground">{charCount} ký tự</span>
+                      <span className="text-sm text-muted-foreground">{charCount} ký tự</span>
                     </div>
-                    <p className="whitespace-pre-line break-words text-sm leading-6 text-foreground">
+                    <p className="whitespace-pre-line break-words text-sm leading-5 text-foreground">
                       {previewMessage}
                     </p>
                   </div>

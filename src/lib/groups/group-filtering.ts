@@ -58,8 +58,7 @@ export const createSentStatusMap = (targets: CampaignTarget[]): Map<string, bool
   return result;
 };
 
-const matchesSearch = (group: Group, searchTerm: string): boolean => {
-  const normalizedTerm = searchTerm.trim().toLowerCase();
+const matchesSearch = (group: Group, normalizedTerm: string): boolean => {
   if (!normalizedTerm) {
     return true;
   }
@@ -133,9 +132,10 @@ export const applyGroupFilters = ({
   statusFilterMode: GroupStatusFilterMode;
   permissionFilterMode: GroupPermissionFilterMode;
   sentStatusByChatId: Map<string, boolean>;
-}): Group[] =>
-  groups.filter((group) => {
-    if (!matchesSearch(group, searchTerm)) {
+}): Group[] => {
+  const normalizedTerm = searchTerm.trim().toLowerCase();
+  return groups.filter((group) => {
+    if (!matchesSearch(group, normalizedTerm)) {
       return false;
     }
     if (minMembers !== null && group.membersCount < minMembers) {
@@ -146,6 +146,7 @@ export const applyGroupFilters = ({
     }
     return matchesPermissionMode(group, permissionFilterMode);
   });
+};
 
 export const countGroupsByMode = (
   groups: Group[],

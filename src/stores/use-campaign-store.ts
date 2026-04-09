@@ -73,6 +73,17 @@ const toStringArray = (value: unknown, fallback: string[]): string[] => {
     .filter(Boolean);
 };
 
+const normalizeChatId = (chatId: string): string => chatId.trim().toLowerCase();
+
+const normalizeChatIdList = (chatIds: string[]): string[] =>
+  Array.from(
+    new Set(
+      chatIds
+        .map((chatId) => normalizeChatId(chatId))
+        .filter(Boolean)
+    )
+  ).sort((a, b) => a.localeCompare(b, 'en', { sensitivity: 'base' }));
+
 const sanitizeCampaignConfig = (
   input: Partial<CampaignConfig> | null | undefined,
   fallback: CampaignConfig
@@ -88,7 +99,7 @@ const sanitizeCampaignConfig = (
     pauseEvery: toNonNegativeInt(source.pauseEvery, fallback.pauseEvery),
     pauseDurationMs: toNonNegativeInt(source.pauseDurationMs, fallback.pauseDurationMs),
     maxAttempts: toMinInt(source.maxAttempts, fallback.maxAttempts, 1),
-    blacklist: toStringArray(source.blacklist, fallback.blacklist),
+    blacklist: normalizeChatIdList(toStringArray(source.blacklist, fallback.blacklist)),
     whitelistMode:
       typeof source.whitelistMode === 'boolean' ? source.whitelistMode : fallback.whitelistMode,
     warningThreshold: toNonNegativeInt(source.warningThreshold, fallback.warningThreshold)
@@ -210,9 +221,10 @@ export const useCampaignStore = create<CampaignStore>((set, get) => ({
 
   previewDuplicateWarning: async ({ groups, selectedIds, composer }) => {
     const selectedGroups = groups.filter((group) => selectedIds.includes(group.chatId));
+    const configuredSet = new Set(get().config.blacklist.map((chatId) => normalizeChatId(chatId)));
     const allowedGroups = get().config.whitelistMode
-      ? selectedGroups.filter((group) => get().config.blacklist.includes(group.chatId))
-      : selectedGroups.filter((group) => !get().config.blacklist.includes(group.chatId));
+      ? selectedGroups.filter((group) => configuredSet.has(normalizeChatId(group.chatId)))
+      : selectedGroups.filter((group) => !configuredSet.has(normalizeChatId(group.chatId)));
 
     if (allowedGroups.length === 0) {
       set({ duplicateWarning: null });
@@ -272,9 +284,10 @@ export const useCampaignStore = create<CampaignStore>((set, get) => ({
     }
 
     const selectedGroups = groups.filter((group) => selectedIds.includes(group.chatId));
+    const configuredSet = new Set(get().config.blacklist.map((chatId) => normalizeChatId(chatId)));
     const allowedGroups = get().config.whitelistMode
-      ? selectedGroups.filter((group) => get().config.blacklist.includes(group.chatId))
-      : selectedGroups.filter((group) => !get().config.blacklist.includes(group.chatId));
+      ? selectedGroups.filter((group) => configuredSet.has(normalizeChatId(group.chatId)))
+      : selectedGroups.filter((group) => !configuredSet.has(normalizeChatId(group.chatId)));
 
     if (allowedGroups.length === 0) {
       throw new Error('Không có nhóm hợp lệ để gửi sau khi áp dụng bộ lọc danh sách');

@@ -38,11 +38,31 @@ const buildCampaignNameFromSource = (sourceName: string): string => {
   return normalized;
 };
 
-const parseChatIds = (value: string): string[] =>
-  value
+const GROUP_CHAT_ID_REGEX = /^[0-9a-z._:-]+@g\.us$/i;
+const normalizeChatId = (chatId: string): string => chatId.trim().toLowerCase();
+
+const parseChatIds = (value: string): { validChatIds: string[]; invalidTokens: string[] } => {
+  const tokens = value
     .split(/[\n,;\s]+/)
     .map((item) => item.trim())
     .filter(Boolean);
+
+  const validSet = new Set<string>();
+  const invalidTokens: string[] = [];
+  for (const token of tokens) {
+    const normalized = normalizeChatId(token);
+    if (GROUP_CHAT_ID_REGEX.test(normalized)) {
+      validSet.add(normalized);
+      continue;
+    }
+    invalidTokens.push(token);
+  }
+
+  return {
+    validChatIds: Array.from(validSet),
+    invalidTokens
+  };
+};
 
 const sanitizeInt = (value: number, fallback: number, min = 0): number => {
   if (!Number.isFinite(value)) {
@@ -73,19 +93,31 @@ export function OperationsPanel(): JSX.Element {
   const controlsDisabled = campaignStore.running || campaignStore.stopping;
   const campaignPaused = campaignStore.paused;
   const campaignStopping = campaignStore.stopping;
+  const groupNameByChatId = useMemo(() => {
+    const mapping = new Map<string, string>();
+    groups.forEach((group) => {
+      const normalizedId = normalizeChatId(group.chatId);
+      const normalizedName = group.name.trim();
+      if (!normalizedId || !normalizedName || mapping.has(normalizedId)) {
+        return;
+      }
+      mapping.set(normalizedId, normalizedName);
+    });
+    return mapping;
+  }, [groups]);
   const selectedGroups = useMemo(
     () => groups.filter((group) => selectedIdsSet.has(group.chatId)),
     [groups, selectedIdsSet]
   );
   const blockedIds = useMemo(
-    () => new Set(campaignStore.config.blacklist),
+    () => new Set(campaignStore.config.blacklist.map((item) => normalizeChatId(item))),
     [campaignStore.config.blacklist]
   );
   const effectiveTargets = useMemo(
     () =>
       campaignStore.config.whitelistMode
-        ? selectedGroups.filter((group) => blockedIds.has(group.chatId))
-        : selectedGroups.filter((group) => !blockedIds.has(group.chatId)),
+        ? selectedGroups.filter((group) => blockedIds.has(normalizeChatId(group.chatId)))
+        : selectedGroups.filter((group) => !blockedIds.has(normalizeChatId(group.chatId))),
     [blockedIds, campaignStore.config.whitelistMode, selectedGroups]
   );
   const effectiveTargetCount = effectiveTargets.length;
@@ -374,14 +406,27 @@ export function OperationsPanel(): JSX.Element {
     if (controlsDisabled) {
       return;
     }
-    const parsed = parseChatIds(blacklistInput);
-    if (parsed.length === 0) {
+    const { validChatIds, invalidTokens } = parseChatIds(blacklistInput);
+    if (invalidTokens.length > 0) {
+      const preview = invalidTokens.slice(0, 3).join(', ');
+      const more = invalidTokens.length > 3 ? ` +${invalidTokens.length - 3}` : '';
+      pushUiLog({
+        level: 'warn',
+        message: `Bỏ qua ${invalidTokens.length} giá trị không hợp lệ (chỉ nhận chat id dạng ...@g.us): ${preview}${more}`
+      });
+    }
+    if (validChatIds.length === 0) {
       if (blacklistInput.trim()) {
         setBlacklistInput('');
       }
       return;
     }
-    const merged = Array.from(new Set([...campaignStore.config.blacklist, ...parsed]));
+    const merged = Array.from(
+      new Set([
+        ...campaignStore.config.blacklist.map((item) => normalizeChatId(item)),
+        ...validChatIds
+      ])
+    ).sort((a, b) => a.localeCompare(b, 'en', { sensitivity: 'base' }));
     campaignStore.setConfig({ blacklist: merged });
     setBlacklistInput('');
   };
@@ -398,8 +443,11 @@ export function OperationsPanel(): JSX.Element {
     if (controlsDisabled) {
       return;
     }
+    const normalizedTarget = normalizeChatId(chatId);
     campaignStore.setConfig({
-      blacklist: campaignStore.config.blacklist.filter((item) => item !== chatId)
+      blacklist: campaignStore.config.blacklist.filter(
+        (item) => normalizeChatId(item) !== normalizedTarget
+      )
     });
   };
 
@@ -646,27 +694,39 @@ export function OperationsPanel(): JSX.Element {
                     className={panelTokens.control}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Có thể dán nhiều chat id, phân tách bằng dấu phẩy, khoảng trắng hoặc xuống dòng rồi nhấn Enter.
+                    Chỉ nhận chat id nhóm dạng <code className="font-mono">...@g.us</code>. Có thể dán nhiều id, phân tách bằng dấu phẩy, khoảng trắng hoặc xuống dòng rồi nhấn Enter.
                   </p>
                   {campaignStore.config.blacklist.length > 0 ? (
-                    <div className="flex flex-wrap gap-2 pt-1">
-                      {campaignStore.config.blacklist.map((chatId) => (
-                        <span
-                          key={chatId}
-                          className="inline-flex min-h-8 max-w-full items-center gap-1.5 rounded-full border border-border/60 bg-background/50 px-2.5 py-1 text-xs text-foreground"
-                        >
-                          <span className="max-w-[220px] truncate font-mono text-xs leading-5">{chatId}</span>
-                          <button
-                            type="button"
-                            className="inline-flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                            onClick={() => removeBlacklistItem(chatId)}
-                            disabled={controlsDisabled}
-                            aria-label={`Xóa ${chatId}`}
+                    <div className="max-h-72 overflow-y-auto pr-1 pt-1">
+                      <div className="flex flex-wrap gap-2">
+                        {campaignStore.config.blacklist.map((chatId) => (
+                          <div
+                            key={chatId}
+                            className="inline-flex min-h-10 max-w-full items-center gap-2 rounded-full border border-border/60 bg-background/50 px-3 py-1.5 text-xs text-foreground"
                           >
-                            <X className="h-3 w-3" />
-                          </button>
-                        </span>
-                      ))}
+                            <span className="min-w-0">
+                              <span
+                                className="block max-w-[230px] truncate text-[11px] font-medium leading-4 text-foreground"
+                                title={groupNameByChatId.get(normalizeChatId(chatId)) ?? 'Chưa tìm thấy tên nhóm trong cache hiện tại'}
+                              >
+                                {groupNameByChatId.get(normalizeChatId(chatId)) ?? 'Nhóm chưa xác định'}
+                              </span>
+                              <span className="block max-w-[230px] truncate font-mono text-[11px] leading-4 text-muted-foreground">
+                                {chatId}
+                              </span>
+                            </span>
+                            <button
+                              type="button"
+                              className="inline-flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                              onClick={() => removeBlacklistItem(chatId)}
+                              disabled={controlsDisabled}
+                              aria-label={`Xóa ${chatId}`}
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   ) : (
                     <p className="text-xs text-muted-foreground">Chưa có chat id trong danh sách.</p>
