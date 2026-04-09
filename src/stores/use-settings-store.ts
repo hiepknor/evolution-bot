@@ -130,6 +130,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     }
 
     set({ badgeState: 'checking', statusMessage: 'Đang kiểm tra kết nối...' });
+    useActivityLogStore.getState().pushUiLog({
+      level: 'info',
+      message: `Đang kiểm tra kết nối tới instance ${settings.instanceName}`
+    });
 
     const provider = createProvider({
       mode: settings.providerMode,

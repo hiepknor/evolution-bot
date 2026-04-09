@@ -113,11 +113,8 @@ export function ConnectionPanel(): JSX.Element {
   const busy = loading || saveMutation.isPending || testMutation.isPending;
   const canEditConnectionFields = providerMode !== 'mock';
   const connectionStatus = getConnectionStatusPresentation(badgeState, statusMessage);
-  const shouldShowStatusBanner = badgeState === 'checking' || connectionStatus.hasError;
-  const statusToneClass =
-    badgeState === 'checking'
-      ? 'border-warning/30 bg-warning/10 text-warning'
-      : 'border-destructive/30 bg-destructive/10 text-destructive';
+  const shouldShowStatusBanner = connectionStatus.hasError;
+  const statusToneClass = 'border-destructive/30 bg-destructive/10 text-destructive';
   const saveButtonLabel = saveMutation.isPending ? 'Đang lưu...' : 'Lưu cấu hình';
   const connectButtonLabel =
     badgeState === 'connected'
