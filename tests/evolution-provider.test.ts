@@ -61,7 +61,293 @@ describe('evolution provider', () => {
     expect(String(firstCall?.[0] ?? '')).toContain('http://43.153.208.222:8080/instance/fetchInstances');
   });
 
-  it('uses prioritized group endpoint and avoids fallback chat downgrade', async () => {
+  it('unions groups from fetchAllGroups and findChats by chat id', async () => {
+    let fetchAllCalled = false;
+    let findChatsCalled = false;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input);
+      const method = String(init?.method ?? 'GET').toUpperCase();
+
+      if (url.includes('/group/fetchAllGroups/instance-a?getParticipants=false') && method === 'GET') {
+        fetchAllCalled = true;
+        return {
+          ok: true,
+          text: async () =>
+            JSON.stringify([{ jid: '111@g.us', subject: 'Group One', size: 10, announce: true }])
+        } as Response;
+      }
+
+      if (url.includes('/chat/findChats/instance-a') && method === 'GET') {
+        findChatsCalled = true;
+        return {
+          ok: true,
+          text: async () =>
+            JSON.stringify([
+              { id: '111@g.us', name: '111', archived: true },
+              { id: '222@g.us', archived: true }
+            ])
+        } as Response;
+      }
+
+      return {
+        ok: true,
+        text: async () => JSON.stringify([])
+      } as Response;
+    });
+
+    const provider = new EvolutionProvider({ baseUrl: 'http://localhost:8080', apiKey: 'x' });
+    const groups = await provider.fetchGroups('instance-a');
+
+    expect(fetchAllCalled).toBe(true);
+    expect(findChatsCalled).toBe(true);
+    expect(groups).toHaveLength(2);
+    expect(groups.find((item) => item.chatId === '111@g.us')?.membersCount).toBe(10);
+    expect(groups.find((item) => item.chatId === '111@g.us')?.name).toBe('Group One');
+    expect(groups.find((item) => item.chatId === '111@g.us')?.adminOnly).toBe(true);
+    expect(groups.some((item) => item.chatId === '222@g.us')).toBe(true);
+  });
+
+  it('retains recently synced archived/community groups from cache when API response is partial', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      text: async () => JSON.stringify([])
+    } as Response);
+
+    const previousGroups: Group[] = [
+      {
+        id: '901@g.us',
+        chatId: '901@g.us',
+        name: 'Community Hidden',
+        membersCount: 17,
+        sendable: true,
+        adminOnly: false,
+        raw: { archived: true, parentGroupJid: '900@g.us' },
+        syncedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString()
+      }
+    ];
+
+    const provider = new EvolutionProvider({ baseUrl: 'http://localhost:8080', apiKey: 'x' });
+    const groups = await provider.fetchGroups('instance-a', { previousGroups });
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.chatId).toBe('901@g.us');
+    expect(groups[0]?.name).toBe('Community Hidden');
+  });
+
+  it('retains recently synced regular groups when at least one fetch endpoint fails', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input);
+      const method = String(init?.method ?? 'GET').toUpperCase();
+
+      if (url.includes('/chat/findChats/instance-a') && method === 'GET') {
+        return {
+          ok: false,
+          status: 500,
+          text: async () => JSON.stringify({ message: 'temporary error' })
+        } as Response;
+      }
+
+      return {
+        ok: true,
+        text: async () => JSON.stringify([])
+      } as Response;
+    });
+
+    const previousGroups: Group[] = [
+      {
+        id: '905@g.us',
+        chatId: '905@g.us',
+        name: 'Recent Regular Group',
+        membersCount: 30,
+        sendable: true,
+        adminOnly: false,
+        raw: {},
+        syncedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
+      }
+    ];
+
+    const provider = new EvolutionProvider({ baseUrl: 'http://localhost:8080', apiKey: 'x' });
+    const groups = await provider.fetchGroups('instance-a', { previousGroups });
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.chatId).toBe('905@g.us');
+  });
+
+  it('retains stale cached groups when sync hits rate-overlimit errors', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input);
+      const method = String(init?.method ?? 'GET').toUpperCase();
+
+      if (url.includes('/chat/findChats/instance-a') && method === 'GET') {
+        return {
+          ok: false,
+          status: 500,
+          text: async () =>
+            JSON.stringify({
+              error: 'Internal Server Error',
+              message: 'rate-overlimit',
+              data: 429
+            })
+        } as Response;
+      }
+
+      return {
+        ok: true,
+        text: async () => JSON.stringify([])
+      } as Response;
+    });
+
+    const previousGroups: Group[] = [
+      {
+        id: '915@g.us',
+        chatId: '915@g.us',
+        name: 'Old Cached Group',
+        membersCount: 15,
+        sendable: true,
+        adminOnly: false,
+        raw: {},
+        syncedAt: new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString()
+      }
+    ];
+
+    const provider = new EvolutionProvider({ baseUrl: 'http://localhost:8080', apiKey: 'x' });
+    const groups = await provider.fetchGroups('instance-a', { previousGroups });
+
+    expect(groups.some((item) => item.chatId === '915@g.us')).toBe(true);
+  });
+
+  it('throws rate-limited error when all requests are blocked by 429/overlimit', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: false,
+      status: 429,
+      text: async () => JSON.stringify({ message: 'rate-overlimit' })
+    } as Response);
+
+    const provider = new EvolutionProvider({ baseUrl: 'http://localhost:8080', apiKey: 'x' });
+    await expect(provider.fetchGroups('instance-a')).rejects.toMatchObject({
+      code: 'FETCH_GROUPS_RATE_LIMITED'
+    });
+  });
+
+  it('does not retain regular cached groups when sync succeeds and returns live data', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input);
+      const method = String(init?.method ?? 'GET').toUpperCase();
+
+      if (url.includes('/chat/findChats/instance-a') && method === 'GET') {
+        return {
+          ok: true,
+          text: async () => JSON.stringify([{ jid: '907@g.us', subject: 'Live Group', size: 11 }])
+        } as Response;
+      }
+
+      return {
+        ok: true,
+        text: async () => JSON.stringify([])
+      } as Response;
+    });
+
+    const previousGroups: Group[] = [
+      {
+        id: '906@g.us',
+        chatId: '906@g.us',
+        name: 'Regular Group',
+        membersCount: 9,
+        sendable: true,
+        adminOnly: false,
+        raw: {},
+        syncedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
+      }
+    ];
+
+    const provider = new EvolutionProvider({ baseUrl: 'http://localhost:8080', apiKey: 'x' });
+    const groups = await provider.fetchGroups('instance-a', { previousGroups });
+
+    expect(groups.some((item) => item.chatId === '907@g.us')).toBe(true);
+    expect(groups.some((item) => item.chatId === '906@g.us')).toBe(false);
+  });
+
+  it('includes regular groups, community announcement groups, and community subgroups in one sync', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input);
+      const method = String(init?.method ?? 'GET').toUpperCase();
+
+      if (url.includes('/chat/findChats/instance-a') && method === 'GET') {
+        return {
+          ok: true,
+          text: async () => JSON.stringify([{ jid: '401@g.us', subject: 'Regular Group', size: 21 }])
+        } as Response;
+      }
+
+      if (url.includes('/chat/findChats/instance-a') && method === 'POST') {
+        return {
+          ok: true,
+          text: async () =>
+            JSON.stringify([
+              {
+                id: '402@g.us',
+                name: 'Community Announcements',
+                announce: true,
+                isCommunityAnnouncement: true
+              },
+              {
+                id: '403@g.us',
+                name: 'Community Subgroup',
+                parentGroupJid: '402@g.us',
+                isSubgroup: true
+              }
+            ])
+        } as Response;
+      }
+
+      return {
+        ok: true,
+        text: async () => JSON.stringify([])
+      } as Response;
+    });
+
+    const provider = new EvolutionProvider({ baseUrl: 'http://localhost:8080', apiKey: 'x' });
+    const groups = await provider.fetchGroups('instance-a');
+    const chatIds = new Set(groups.map((item) => item.chatId));
+
+    expect(chatIds.has('401@g.us')).toBe(true);
+    expect(chatIds.has('402@g.us')).toBe(true);
+    expect(chatIds.has('403@g.us')).toBe(true);
+    expect(groups.find((item) => item.chatId === '402@g.us')?.adminOnly).toBe(true);
+  });
+
+  it('includes group chats from findContacts when they are missing from findChats/fetchAllGroups', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input);
+      const method = String(init?.method ?? 'GET').toUpperCase();
+
+      if (url.includes('/chat/findContacts/instance-a') && method === 'POST') {
+        return {
+          ok: true,
+          text: async () =>
+            JSON.stringify([
+              { remoteJid: '450@g.us', pushName: 'Hidden Community Subgroup' },
+              { remoteJid: '84991234567@s.whatsapp.net', pushName: 'Regular Contact' }
+            ])
+        } as Response;
+      }
+
+      return {
+        ok: true,
+        text: async () => JSON.stringify([])
+      } as Response;
+    });
+
+    const provider = new EvolutionProvider({ baseUrl: 'http://localhost:8080', apiKey: 'x' });
+    const groups = await provider.fetchGroups('instance-a');
+    const chatIds = new Set(groups.map((item) => item.chatId));
+
+    expect(chatIds.has('450@g.us')).toBe(true);
+    expect(chatIds.has('84991234567@s.whatsapp.net')).toBe(false);
+    expect(groups.find((item) => item.chatId === '450@g.us')?.name).toBe('Hidden Community Subgroup');
+  });
+
+  it('adds missing subgroup ids when community payload only exposes linked group references', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
       const url = String(input);
       const method = String(init?.method ?? 'GET').toUpperCase();
@@ -70,27 +356,163 @@ describe('evolution provider', () => {
         return {
           ok: true,
           text: async () =>
-            JSON.stringify([{ jid: '111@g.us', subject: 'Group One', size: 10, announce: true }])
+            JSON.stringify([
+              {
+                id: '500@g.us',
+                subject: 'Main Community',
+                linkedGroups: ['501@g.us', '502@g.us']
+              }
+            ])
         } as Response;
       }
 
-      if (url.includes('/chat/findChats/instance-a')) {
-        throw new Error('chat fallback should not run when primary group endpoint succeeds');
+      return {
+        ok: true,
+        text: async () => JSON.stringify([])
+      } as Response;
+    });
+
+    const provider = new EvolutionProvider({ baseUrl: 'http://localhost:8080', apiKey: 'x' });
+    const groups = await provider.fetchGroups('instance-a');
+    const chatIds = new Set(groups.map((item) => item.chatId));
+
+    expect(chatIds.has('500@g.us')).toBe(true);
+    expect(chatIds.has('501@g.us')).toBe(true);
+    expect(chatIds.has('502@g.us')).toBe(true);
+  });
+
+  it('recognizes all @g.us ids from fetchAllGroups even when multiple ids are packed in one string', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input);
+      const method = String(init?.method ?? 'GET').toUpperCase();
+
+      if (url.includes('/group/fetchAllGroups/instance-a?getParticipants=false') && method === 'GET') {
+        return {
+          ok: true,
+          text: async () =>
+            JSON.stringify([
+              {
+                id: '610@g.us',
+                subject: 'Community Root',
+                linkedGroupsText: 'children: 611@g.us, 612@g.us; legacy=613@g.us'
+              }
+            ])
+        } as Response;
       }
 
       return {
-        ok: false,
-        status: 404,
-        text: async () => JSON.stringify({ message: 'Not found' })
+        ok: true,
+        text: async () => JSON.stringify([])
+      } as Response;
+    });
+
+    const provider = new EvolutionProvider({ baseUrl: 'http://localhost:8080', apiKey: 'x' });
+    const groups = await provider.fetchGroups('instance-a');
+    const chatIds = new Set(groups.map((item) => item.chatId));
+
+    expect(chatIds.has('610@g.us')).toBe(true);
+    expect(chatIds.has('611@g.us')).toBe(true);
+    expect(chatIds.has('612@g.us')).toBe(true);
+    expect(chatIds.has('613@g.us')).toBe(true);
+  });
+
+  it('runs a second pass to hydrate subgroup metadata after reference fallback', async () => {
+    let fetchAllGetCalls = 0;
+    let fetchAllPostCalls = 0;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input);
+      const method = String(init?.method ?? 'GET').toUpperCase();
+
+      if (url.includes('/group/fetchAllGroups/instance-a?getParticipants=false') && method === 'GET') {
+        fetchAllGetCalls += 1;
+        if (fetchAllGetCalls === 1) {
+          return {
+            ok: true,
+            text: async () =>
+              JSON.stringify([
+                {
+                  id: '700@g.us',
+                  subject: 'Community Root',
+                  linkedGroups: ['701@g.us']
+                }
+              ])
+          } as Response;
+        }
+      }
+
+      if (url.includes('/group/fetchAllGroups/instance-a') && method === 'POST') {
+        fetchAllPostCalls += 1;
+
+        return {
+          ok: true,
+          text: async () =>
+            JSON.stringify([
+              {
+                id: '700@g.us',
+                subject: 'Community Root',
+                linkedGroups: ['701@g.us']
+              },
+              {
+                id: '701@g.us',
+                subject: 'Community Subgroup 701',
+                size: 19
+              }
+            ])
+        } as Response;
+      }
+
+      return {
+        ok: true,
+        text: async () => JSON.stringify([])
       } as Response;
     });
 
     const provider = new EvolutionProvider({ baseUrl: 'http://localhost:8080', apiKey: 'x' });
     const groups = await provider.fetchGroups('instance-a');
 
-    expect(groups).toHaveLength(1);
-    expect(groups.find((item) => item.chatId === '111@g.us')?.membersCount).toBe(10);
-    expect(groups.find((item) => item.chatId === '111@g.us')?.adminOnly).toBe(true);
+    expect(fetchAllGetCalls).toBe(1);
+    expect(fetchAllPostCalls).toBe(1);
+    expect(groups.some((item) => item.chatId === '701@g.us')).toBe(true);
+    expect(groups.find((item) => item.chatId === '701@g.us')?.name).toBe('Community Subgroup 701');
+    expect(groups.find((item) => item.chatId === '701@g.us')?.membersCount).toBe(19);
+  });
+
+  it('does not retain stale cached hidden groups beyond retention window', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input);
+      const method = String(init?.method ?? 'GET').toUpperCase();
+
+      if (url.includes('/chat/findChats/instance-a') && method === 'GET') {
+        return {
+          ok: true,
+          text: async () => JSON.stringify([{ jid: '311@g.us', subject: 'Live Group', size: 8 }])
+        } as Response;
+      }
+
+      return {
+        ok: true,
+        text: async () => JSON.stringify([])
+      } as Response;
+    });
+
+    const previousGroups: Group[] = [
+      {
+        id: '999@g.us',
+        chatId: '999@g.us',
+        name: 'Old Hidden Group',
+        membersCount: 23,
+        sendable: true,
+        adminOnly: false,
+        raw: { archived: true, hidden: true },
+        syncedAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString()
+      }
+    ];
+
+    const provider = new EvolutionProvider({ baseUrl: 'http://localhost:8080', apiKey: 'x' });
+    const groups = await provider.fetchGroups('instance-a', { previousGroups });
+
+    expect(groups.some((item) => item.chatId === '311@g.us')).toBe(true);
+    expect(groups.some((item) => item.chatId === '999@g.us')).toBe(false);
   });
 
   it('extracts groups from object-map payload and metadata id fallback', async () => {
@@ -207,7 +629,7 @@ describe('evolution provider', () => {
       const url = String(input);
       const method = String(init?.method ?? 'GET').toUpperCase();
 
-      if (url.includes('/group/fetchAllGroups/instance-a?getParticipants=false') && method === 'GET') {
+      if (url.includes('/chat/findChats/instance-a') && method === 'GET') {
         return {
           ok: true,
           text: async () =>
@@ -293,7 +715,7 @@ describe('evolution provider', () => {
       const url = String(input);
       const method = String(init?.method ?? 'GET').toUpperCase();
 
-      if (url.includes('/group/fetchAllGroups/instance-a?getParticipants=false') && method === 'GET') {
+      if (url.includes('/chat/findChats/instance-a') && method === 'GET') {
         return {
           ok: true,
           text: async () =>
@@ -361,7 +783,7 @@ describe('evolution provider', () => {
       const url = String(input);
       const method = String(init?.method ?? 'GET').toUpperCase();
 
-      if (url.includes('/group/fetchAllGroups/instance-a?getParticipants=false') && method === 'GET') {
+      if (url.includes('/chat/findChats/instance-a') && method === 'GET') {
         return {
           ok: true,
           text: async () =>

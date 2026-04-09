@@ -324,7 +324,9 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
     },
     onError: (error) => {
       const message = error instanceof AppError
-        ? `${error.message}${error.status ? ` (HTTP ${error.status})` : ''}`
+        ? error.code === 'FETCH_GROUPS_RATE_LIMITED'
+          ? `${error.message} Hệ thống giữ nguyên danh sách nhóm cache hiện tại để tránh mất dữ liệu.`
+          : `${error.message}${error.status ? ` (HTTP ${error.status})` : ''}`
         : error instanceof Error
           ? error.message
           : typeof error === 'string'
@@ -492,7 +494,7 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
           Đồng bộ lần cuối: {lastSyncedAt ? dayjs(lastSyncedAt).format('YYYY-MM-DD HH:mm:ss') : 'chưa có'}
         </div>
       </CardHeader>
-      <CardContent className={`flex min-h-0 flex-1 flex-col overflow-hidden ${panelTokens.cardContent}`}>
+      <CardContent className={`flex min-h-0 flex-1 flex-col overflow-hidden pt-3 ${panelTokens.cardContent}`}>
         <div className={panelTokens.section}>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex flex-wrap items-center justify-start gap-1.5">
@@ -878,19 +880,8 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
                 </div>
                 <p className="text-base font-semibold text-foreground">Chưa có dữ liệu nhóm</p>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Bấm &quot;Tải danh sách nhóm&quot; để đồng bộ dữ liệu từ Evo API trước khi lọc và chọn nhóm gửi.
+                  Dùng nút &quot;Tải danh sách nhóm&quot; ở phần điều khiển phía trên để đồng bộ dữ liệu từ Evo API trước khi lọc và chọn nhóm gửi.
                 </p>
-                <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-                  <Button
-                    onClick={onSyncGroups}
-                    className={`${panelTokens.control} min-w-[220px] rounded-md bg-primary/95 px-4 text-primary-foreground shadow-[0_8px_24px_-14px_hsl(var(--primary))] hover:bg-primary`}
-                    disabled={syncDisabledReason !== null}
-                    title={syncDisabledReason ?? 'Tải danh sách nhóm từ Evo API'}
-                  >
-                    <RefreshCw className={`mr-2 h-4 w-4 ${syncMutation.isPending ? 'animate-spin' : ''}`} />
-                    {syncMutation.isPending ? 'Đang tải danh sách...' : 'Tải danh sách nhóm'}
-                  </Button>
-                </div>
               </div>
             </div>
           )}

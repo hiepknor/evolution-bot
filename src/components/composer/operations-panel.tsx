@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { AlertTriangle, RefreshCw, X } from 'lucide-react';
+import { AlertTriangle, ChevronDown, RefreshCw, X } from 'lucide-react';
 import dayjs from 'dayjs';
 import {
   AlertDialog,
@@ -522,10 +522,15 @@ export function OperationsPanel(): JSX.Element {
         <div className={panelTokens.section}>
           <button
             type="button"
-            className="h-9 w-full rounded-md border border-border/40 bg-background/35 px-3 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-muted/30"
+            className="flex h-9 w-full items-center justify-between rounded-md border border-border/40 bg-background/35 px-3 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-muted/30"
             onClick={() => setShowAdvanced((prev) => !prev)}
           >
-            Cấu hình nâng cao {showAdvanced ? '▲' : '▼'}
+            <span>Cấu hình nâng cao</span>
+            <ChevronDown
+              className={`h-4 w-4 shrink-0 transition-transform duration-200 ${
+                showAdvanced ? 'rotate-180 text-foreground/80' : 'text-muted-foreground/70'
+              }`}
+            />
           </button>
 
           {showAdvanced ? (

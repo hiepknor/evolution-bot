@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEve
 import dayjs from 'dayjs';
 import { open } from '@tauri-apps/plugin-dialog';
 import { BaseDirectory, mkdir, writeFile } from '@tauri-apps/plugin-fs';
-import { Trash2 } from 'lucide-react';
+import { ChevronDown, Trash2 } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -714,10 +714,15 @@ export function ComposerPanel(): JSX.Element {
             <div className="flex items-center justify-between gap-2">
               <button
                 type="button"
-                className="min-w-0 flex-1 rounded-md border border-border/60 bg-muted/20 px-3 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-muted/35 h-9"
+                className="flex h-9 min-w-0 flex-1 items-center justify-between rounded-md border border-border/60 bg-muted/20 px-3 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-muted/35"
                 onClick={() => setShowAdvancedContent((prev) => !prev)}
               >
-                Nội dung nâng cao {showAdvancedContent ? '▲' : '▼'}
+                <span>Nội dung nâng cao</span>
+                <ChevronDown
+                  className={`h-4 w-4 shrink-0 transition-transform duration-200 ${
+                    showAdvancedContent ? 'rotate-180 text-foreground/80' : 'text-muted-foreground/70'
+                  }`}
+                />
               </button>
               <Badge variant={hasAdvancedContent ? 'success' : 'secondary'} className="shrink-0">
                 {hasAdvancedContent ? 'Đang dùng' : 'Chưa dùng'}
@@ -764,8 +769,10 @@ export function ComposerPanel(): JSX.Element {
                 </div>
               </div>
             ) : (
-              <p className="text-xs text-muted-foreground">
-                {hasAdvancedContent ? 'Đang có nội dung trong phần nâng cao.' : 'Chưa dùng phần nội dung nâng cao.'}
+              <p className="text-sm text-muted-foreground">
+                {hasAdvancedContent
+                  ? 'Đã có nội dung nâng cao. Mở mục này để chỉnh sửa nhanh.'
+                  : 'Đang dùng nội dung cơ bản. Mở mục này để thêm mở đầu, tiêu đề phụ, kết thúc hoặc văn bản dự phòng.'}
               </p>
             )}
           </div>

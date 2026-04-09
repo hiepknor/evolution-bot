@@ -30,6 +30,11 @@ interface EvolutionProviderOptions {
 const ADMIN_PERMISSION_DEEP_CHECK_MAX_GROUPS = 180;
 const ADMIN_PERMISSION_DEEP_CHECK_TIMEOUT_MS = 12_000;
 const INSTANCE_LOOKUP_TIMEOUT_MS = 8_000;
+const MISSING_GROUP_RETENTION_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const GENERIC_MISSING_GROUP_RETENTION_WINDOW_MS = 24 * 60 * 60 * 1000;
+const REFERENCE_FALLBACK_GROUP_LIMIT = 600;
+const GROUP_SYNC_MAX_PASSES = 2;
+const GROUP_JID_PATTERN = /([0-9a-z._:-]+@g\.us)\b/gi;
 
 const asRecord = (value: unknown): Record<string, unknown> | null =>
   typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : null;
@@ -229,6 +234,62 @@ const collectResponseHints = (value: unknown, depth = 0): string[] => {
   return hints;
 };
 
+const containsRateLimitSignal = (value: unknown, depth = 0): boolean => {
+  if (depth > 8 || value === null || value === undefined) {
+    return false;
+  }
+
+  if (typeof value === 'number') {
+    return value === 429;
+  }
+
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (!normalized) {
+      return false;
+    }
+    return /(rate[\s_-]*over[\s_-]*limit|rate[\s_-]*limit|too many requests|\b429\b)/i.test(normalized);
+  }
+
+  if (Array.isArray(value)) {
+    return value.some((item) => containsRateLimitSignal(item, depth + 1));
+  }
+
+  const obj = asRecord(value);
+  if (!obj) {
+    return false;
+  }
+
+  for (const key of Object.keys(obj)) {
+    if (containsRateLimitSignal(key, depth + 1)) {
+      return true;
+    }
+  }
+
+  for (const nested of Object.values(obj)) {
+    if (containsRateLimitSignal(nested, depth + 1)) {
+      return true;
+    }
+  }
+
+  return false;
+};
+
+const isRateLimitError = (error: unknown): boolean => {
+  if (error instanceof AppError) {
+    if (error.status === 429) {
+      return true;
+    }
+    return containsRateLimitSignal(error.message) || containsRateLimitSignal(error.details);
+  }
+
+  if (error instanceof Error) {
+    return containsRateLimitSignal(error.message);
+  }
+
+  return containsRateLimitSignal(error);
+};
+
 const extractGroupList = (value: unknown, depth = 0): EvolutionGroupDto[] => {
   if (depth > 8 || value === null || value === undefined) {
     return [];
@@ -268,6 +329,42 @@ const extractGroupList = (value: unknown, depth = 0): EvolutionGroupDto[] => {
     merged.push(...extractGroupList(candidate, depth + 1));
   }
 
+  return merged;
+};
+
+const collectGroupJidReferences = (value: unknown, depth = 0): string[] => {
+  if (depth > 8 || value === null || value === undefined) {
+    return [];
+  }
+
+  if (typeof value === 'string') {
+    const matches = value.toLowerCase().match(GROUP_JID_PATTERN);
+    return matches ? matches.map((item) => item.trim()) : [];
+  }
+
+  if (Array.isArray(value)) {
+    const merged: string[] = [];
+    for (const item of value) {
+      merged.push(...collectGroupJidReferences(item, depth + 1));
+    }
+    return merged;
+  }
+
+  const obj = asRecord(value);
+  if (!obj) {
+    return [];
+  }
+
+  const merged: string[] = [];
+  for (const key of Object.keys(obj)) {
+    const keyMatches = key.toLowerCase().match(GROUP_JID_PATTERN);
+    if (keyMatches) {
+      merged.push(...keyMatches.map((item) => item.trim()));
+    }
+  }
+  for (const nested of Object.values(obj)) {
+    merged.push(...collectGroupJidReferences(nested, depth + 1));
+  }
   return merged;
 };
 
@@ -507,12 +604,15 @@ const normalizeGroup = (dto: EvolutionGroupDto): Group => {
   };
 };
 
-const mergeGroupSnapshots = (current: Group, incoming: Group): Group => {
+const mergeGroupSnapshots = (current: Group, incoming: Group, preferIncomingOnNameTie = false): Group => {
   const currentName = normalizeText(current.name);
   const incomingName = normalizeText(incoming.name);
   const currentNameScore = scoreGroupName(currentName, current.chatId);
   const incomingNameScore = scoreGroupName(incomingName, incoming.chatId);
-  const selectedName = incomingNameScore > currentNameScore ? incomingName : currentName;
+  const shouldUseIncomingName =
+    incomingNameScore > currentNameScore ||
+    (preferIncomingOnNameTie && incomingNameScore === currentNameScore);
+  const selectedName = shouldUseIncomingName ? incomingName : currentName;
 
   return {
     ...current,
@@ -544,6 +644,160 @@ const looksLikeGroup = (dto: EvolutionGroupDto, normalized: Group): boolean => {
   }
 
   return false;
+};
+
+const toBooleanFlag = (value: unknown): boolean | null => {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value !== 0;
+  }
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (!normalized) {
+      return null;
+    }
+    if (['true', '1', 'yes', 'y', 'on', 'enabled'].includes(normalized)) {
+      return true;
+    }
+    if (['false', '0', 'no', 'n', 'off', 'disabled'].includes(normalized)) {
+      return false;
+    }
+  }
+  return null;
+};
+
+const hasTruthyFlagByKeys = (sources: Record<string, unknown>[], keys: string[]): boolean => {
+  for (const source of sources) {
+    for (const key of keys) {
+      if (toBooleanFlag(source[key]) === true) {
+        return true;
+      }
+    }
+  }
+  return false;
+};
+
+const hasNonEmptyIdentifierByKeys = (sources: Record<string, unknown>[], keys: string[]): boolean => {
+  for (const source of sources) {
+    for (const key of keys) {
+      const value = source[key];
+      if (value === null || value === undefined) {
+        continue;
+      }
+
+      const normalized = toStringSafe(value).trim();
+      if (normalized.length > 0) {
+        return true;
+      }
+    }
+  }
+  return false;
+};
+
+const hasSpecialRetentionMarker = (group: Group): boolean => {
+  const raw = asRecord(group.raw) ?? {};
+  const metadata = asRecord(raw.groupMetadata ?? raw.metadata) ?? {};
+  const sources = [
+    raw,
+    metadata,
+    asRecord(raw.groupInfo),
+    asRecord(metadata.groupInfo),
+    asRecord(raw.attrs),
+    asRecord(metadata.attrs)
+  ].filter((item): item is Record<string, unknown> => Boolean(item));
+
+  const archivedKeys = [
+    'archived',
+    'isArchived',
+    'is_archived',
+    'hidden',
+    'isHidden',
+    'is_hidden',
+    'isHiddenChat'
+  ];
+  if (hasTruthyFlagByKeys(sources, archivedKeys)) {
+    return true;
+  }
+
+  const announcementKeys = ['announce', 'isAnnounce', 'announcement', 'isAnnouncement'];
+  if (hasTruthyFlagByKeys(sources, announcementKeys)) {
+    return true;
+  }
+
+  const communityKeys = [
+    'community',
+    'isCommunity',
+    'isCommunityGroup',
+    'isCommunityAnnouncement',
+    'isCommunityAnnounce',
+    'isSubgroup',
+    'isSubGroup',
+    'isLinkedGroup',
+    'isAnnouncementGroup'
+  ];
+  if (hasTruthyFlagByKeys(sources, communityKeys)) {
+    return true;
+  }
+
+  const parentLinkKeys = [
+    'parent',
+    'parentGroupJid',
+    'parentGroupId',
+    'parentJid',
+    'parentId',
+    'linkedParent',
+    'linkedParentJid',
+    'linkedGroupJid',
+    'communityJid',
+    'communityId'
+  ];
+  return hasNonEmptyIdentifierByKeys(sources, parentLinkKeys);
+};
+
+const shouldRetainMissingGroup = (
+  group: Group,
+  nowMs: number,
+  allowGenericRetention: boolean
+): boolean => {
+  if (!group.chatId.endsWith('@g.us')) {
+    return false;
+  }
+
+  const syncedAtMs = Date.parse(group.syncedAt);
+  if (!Number.isFinite(syncedAtMs)) {
+    return false;
+  }
+
+  const ageMs = nowMs - syncedAtMs;
+  if (ageMs < 0) {
+    return false;
+  }
+
+  if (hasSpecialRetentionMarker(group)) {
+    return ageMs <= MISSING_GROUP_RETENTION_WINDOW_MS;
+  }
+
+  return allowGenericRetention && ageMs <= GENERIC_MISSING_GROUP_RETENTION_WINDOW_MS;
+};
+
+type GroupFetchSource = 'fetchAllGroups' | 'findChats' | 'findContacts' | 'referenceFallback';
+type RemoteGroupFetchSource = Exclude<GroupFetchSource, 'referenceFallback'>;
+type SourceRequestVariant = 'primary' | 'fallback';
+
+const groupSourcePriority: Record<GroupFetchSource, number> = {
+  referenceFallback: 0,
+  findContacts: 1,
+  findChats: 2,
+  fetchAllGroups: 3
+};
+
+const remoteGroupSources: RemoteGroupFetchSource[] = ['fetchAllGroups', 'findChats', 'findContacts'];
+
+const isReferenceFallbackGroup = (group: Group): boolean => {
+  const raw = asRecord(group.raw);
+  return raw?.__fromReferenceFallback === true;
 };
 
 export class EvolutionProvider implements MessagingProvider {
@@ -602,35 +856,67 @@ export class EvolutionProvider implements MessagingProvider {
     const encodedInstanceName = encodeURIComponent(trimmedInstanceName);
 
     const requests: Array<{
+      source: RemoteGroupFetchSource;
+      variant: SourceRequestVariant;
       path: string;
       method?: 'GET' | 'POST';
       body?: unknown;
       timeoutMs?: number;
-      stopWhenGroupsFound?: boolean;
     }> = [
       {
+        source: 'fetchAllGroups',
+        variant: 'primary',
         path: `/group/fetchAllGroups/${encodedInstanceName}?getParticipants=false`,
-        timeoutMs: 300_000,
-        stopWhenGroupsFound: true
+        timeoutMs: 300_000
       },
       {
+        source: 'fetchAllGroups',
+        variant: 'fallback',
         path: `/group/fetchAllGroups/${encodedInstanceName}`,
         method: 'POST',
         body: { getParticipants: false },
-        timeoutMs: 60_000
+        timeoutMs: 120_000
       },
-      { path: `/group/findGroups/${encodedInstanceName}`, timeoutMs: 30_000 },
-      { path: `/group/findGroups/${encodedInstanceName}`, method: 'POST', body: {}, timeoutMs: 30_000 },
-      { path: `/chat/findChats/${encodedInstanceName}`, timeoutMs: 20_000 },
-      { path: `/chat/findChats/${encodedInstanceName}`, method: 'POST', body: {}, timeoutMs: 20_000 }
+      {
+        source: 'findChats',
+        variant: 'primary',
+        path: `/chat/findChats/${encodedInstanceName}`,
+        method: 'POST',
+        body: {},
+        timeoutMs: 45_000
+      },
+      {
+        source: 'findChats',
+        variant: 'fallback',
+        path: `/chat/findChats/${encodedInstanceName}`,
+        timeoutMs: 25_000
+      },
+      {
+        source: 'findContacts',
+        variant: 'primary',
+        path: `/chat/findContacts/${encodedInstanceName}`,
+        method: 'POST',
+        body: {},
+        timeoutMs: 45_000
+      },
+      {
+        source: 'findContacts',
+        variant: 'fallback',
+        path: `/chat/findContacts/${encodedInstanceName}`,
+        timeoutMs: 25_000
+      }
     ];
 
     let lastError: unknown;
     let hadSuccessfulResponse = false;
+    let hadRequestFailure = false;
+    let hadRateLimitFailure = false;
     const responseHints: string[] = [];
     const diagnostics: string[] = [];
+    const referencedGroupJids = new Set<string>();
 
     const groupsByChatId = new Map<string, Group>();
+    const sourceByChatId = new Map<string, GroupFetchSource>();
     const reusablePermissionByChatId = new Map<string, boolean>();
     for (const previousGroup of options?.previousGroups ?? []) {
       if (!previousGroup.chatId.endsWith('@g.us')) {
@@ -642,43 +928,232 @@ export class EvolutionProvider implements MessagingProvider {
       }
     }
 
-    for (const req of requests) {
-      try {
-        const data = await this.client.request<unknown>({
-          method: req.method,
-          path: req.path,
-          body: req.body,
-          timeoutMs: req.timeoutMs
-        });
-        hadSuccessfulResponse = true;
-        responseHints.push(...collectResponseHints(data));
+    const mergeGroupBySource = (incomingGroup: Group, incomingSource: GroupFetchSource): void => {
+      const existingGroup = groupsByChatId.get(incomingGroup.chatId);
+      if (!existingGroup) {
+        groupsByChatId.set(incomingGroup.chatId, incomingGroup);
+        sourceByChatId.set(incomingGroup.chatId, incomingSource);
+        return;
+      }
 
-        const sourceIsGroupEndpoint = req.path.startsWith('/group/');
-        const extracted = extractGroupList(data);
+      const existingSource = sourceByChatId.get(incomingGroup.chatId) ?? 'findChats';
+      if (groupSourcePriority[incomingSource] >= groupSourcePriority[existingSource]) {
+        groupsByChatId.set(
+          incomingGroup.chatId,
+          mergeGroupSnapshots(existingGroup, incomingGroup, true)
+        );
+        sourceByChatId.set(incomingGroup.chatId, incomingSource);
+        return;
+      }
+
+      groupsByChatId.set(
+        incomingGroup.chatId,
+        mergeGroupSnapshots(incomingGroup, existingGroup, true)
+      );
+    };
+
+    let totalFallbackAdded = 0;
+    const addReferenceFallbackGroups = (passIndex: number): number => {
+      let addedInPass = 0;
+
+      for (const groupJid of referencedGroupJids) {
+        if (groupsByChatId.has(groupJid)) {
+          continue;
+        }
+        if (totalFallbackAdded >= REFERENCE_FALLBACK_GROUP_LIMIT) {
+          break;
+        }
+
+        const fallbackGroup: Group = {
+          id: groupJid,
+          chatId: groupJid,
+          name: groupJid,
+          membersCount: 0,
+          sendable: true,
+          adminOnly: false,
+          raw: {
+            id: groupJid,
+            __fromReferenceFallback: true
+          },
+          syncedAt: new Date().toISOString()
+        };
+        mergeGroupBySource(fallbackGroup, 'referenceFallback');
+        totalFallbackAdded += 1;
+        addedInPass += 1;
+      }
+
+      if (addedInPass > 0) {
+        diagnostics.push(`pass=${passIndex} reference-fallback-added=${addedInPass}`);
+      }
+
+      return addedInPass;
+    };
+
+    const countReferenceFallbackGroups = (): number => {
+      let count = 0;
+      for (const group of groupsByChatId.values()) {
+        if (isReferenceFallbackGroup(group)) {
+          count += 1;
+        }
+      }
+      return count;
+    };
+
+    const runSyncPass = async (
+      passIndex: number,
+      activeRequests: Array<{
+        source: RemoteGroupFetchSource;
+        variant: SourceRequestVariant;
+        path: string;
+        method?: 'GET' | 'POST';
+        body?: unknown;
+        timeoutMs?: number;
+      }>
+    ): Promise<{
+      requestFailures: number;
+      fallbackAdded: number;
+      sourceAttempts: Map<RemoteGroupFetchSource, number>;
+      sourceSuccesses: Map<RemoteGroupFetchSource, number>;
+      sourceAccepted: Map<RemoteGroupFetchSource, number>;
+    }> => {
+      const sourceAttempts = new Map<RemoteGroupFetchSource, number>();
+      const sourceSuccesses = new Map<RemoteGroupFetchSource, number>();
+      const sourceAccepted = new Map<RemoteGroupFetchSource, number>();
+      let hadAnyRequestError = false;
+      const responses = await Promise.all(
+        activeRequests.map(async (req) => {
+          sourceAttempts.set(req.source, (sourceAttempts.get(req.source) ?? 0) + 1);
+          try {
+            const data = await this.client.request<unknown>({
+              method: req.method,
+              path: req.path,
+              body: req.body,
+              timeoutMs: req.timeoutMs
+            });
+            return { req, data };
+          } catch (error) {
+            return { req, error };
+          }
+        })
+      );
+
+      for (const result of responses) {
+        if ('error' in result) {
+          hadAnyRequestError = true;
+          hadRequestFailure = true;
+          if (isRateLimitError(result.error)) {
+            hadRateLimitFailure = true;
+          }
+          lastError = result.error;
+          const errorMessage =
+            result.error instanceof Error ? result.error.message : 'request failed';
+          diagnostics.push(
+            `pass=${passIndex} ${result.req.method ?? 'GET'} ${result.req.path}: failed (${errorMessage})`
+          );
+          continue;
+        }
+
+        sourceSuccesses.set(result.req.source, (sourceSuccesses.get(result.req.source) ?? 0) + 1);
+        hadSuccessfulResponse = true;
+        responseHints.push(...collectResponseHints(result.data));
+        for (const jid of collectGroupJidReferences(result.data)) {
+          referencedGroupJids.add(jid);
+        }
+
+        const extracted = extractGroupList(result.data);
         const normalized = extracted
           .map((dto) => ({ dto, group: normalizeGroup(dto) }))
           .filter(({ group }) => group.chatId.length > 0);
-        const accepted = normalized.filter(({ dto, group }) =>
-          sourceIsGroupEndpoint
-            ? group.chatId.endsWith('@g.us') || looksLikeGroup(dto, group)
-            : looksLikeGroup(dto, group)
+        const accepted = normalized.filter(
+          ({ dto, group }) => group.chatId.endsWith('@g.us') || looksLikeGroup(dto, group)
         );
         diagnostics.push(
-          `${req.method ?? 'GET'} ${req.path}: raw=${extracted.length}, valid=${normalized.length}, kept=${accepted.length}`
+          `pass=${passIndex} ${result.req.variant} ${result.req.method ?? 'GET'} ${result.req.path}: raw=${extracted.length}, valid=${normalized.length}, kept=${accepted.length}`
         );
-        const list = accepted.map(({ group }) => group);
+        sourceAccepted.set(result.req.source, (sourceAccepted.get(result.req.source) ?? 0) + accepted.length);
 
-        for (const group of list) {
-          const existing = groupsByChatId.get(group.chatId);
-          groupsByChatId.set(group.chatId, existing ? mergeGroupSnapshots(existing, group) : group);
+        for (const { group } of accepted) {
+          mergeGroupBySource(group, result.req.source);
         }
-
-        if (req.stopWhenGroupsFound && list.length > 0) {
-          break;
-        }
-      } catch (error) {
-        lastError = error;
       }
+
+      let requestFailures = 0;
+      for (const [source, attempts] of sourceAttempts.entries()) {
+        if (attempts <= 0) {
+          continue;
+        }
+        const successes = sourceSuccesses.get(source) ?? 0;
+        if (successes > 0) {
+          diagnostics.push(`pass=${passIndex} source=${source}: success=${successes}/${attempts}`);
+          continue;
+        }
+        requestFailures += 1;
+        diagnostics.push(`pass=${passIndex} source=${source}: success=0/${attempts}`);
+      }
+      if (requestFailures > 0) {
+        hadRequestFailure = true;
+      }
+      if (hadAnyRequestError && requestFailures === 0) {
+        requestFailures = 1;
+      }
+
+      return {
+        requestFailures,
+        fallbackAdded: addReferenceFallbackGroups(passIndex),
+        sourceAttempts,
+        sourceSuccesses,
+        sourceAccepted
+      };
+    };
+
+    const primaryRequests = requests.filter((req) => req.variant === 'primary');
+    const firstPass = await runSyncPass(1, primaryRequests);
+
+    const unresolvedAfterFirstPass = countReferenceFallbackGroups();
+    const sourcesNeedingFallback = new Set<RemoteGroupFetchSource>();
+
+    for (const source of remoteGroupSources) {
+      const attempts = firstPass.sourceAttempts.get(source) ?? 0;
+      if (attempts === 0) {
+        continue;
+      }
+      const successes = firstPass.sourceSuccesses.get(source) ?? 0;
+      const accepted = firstPass.sourceAccepted.get(source) ?? 0;
+      if (successes === 0 || accepted === 0) {
+        sourcesNeedingFallback.add(source);
+      }
+    }
+
+    if (unresolvedAfterFirstPass > 0) {
+      sourcesNeedingFallback.add('fetchAllGroups');
+    }
+
+    const shouldRunSecondPass =
+      GROUP_SYNC_MAX_PASSES >= 2 &&
+      !hadRateLimitFailure &&
+      sourcesNeedingFallback.size > 0;
+
+    if (shouldRunSecondPass) {
+      const fallbackRequests = requests.filter((req) => req.variant === 'fallback');
+      if (fallbackRequests.length > 0) {
+        await runSyncPass(2, fallbackRequests);
+      }
+    }
+
+    const nowMs = Date.now();
+
+    for (const previousGroup of options?.previousGroups ?? []) {
+      if (groupsByChatId.has(previousGroup.chatId)) {
+        continue;
+      }
+      if (hadRateLimitFailure) {
+        groupsByChatId.set(previousGroup.chatId, previousGroup);
+        continue;
+      }
+      if (!shouldRetainMissingGroup(previousGroup, nowMs, hadRequestFailure)) {
+        continue;
+      }
+      groupsByChatId.set(previousGroup.chatId, previousGroup);
     }
 
     if (groupsByChatId.size > 0) {
@@ -752,6 +1227,13 @@ export class EvolutionProvider implements MessagingProvider {
     }
 
     if (hadSuccessfulResponse) {
+      if (hadRateLimitFailure) {
+        throw new AppError(
+          'FETCH_GROUPS_RATE_LIMITED',
+          'Evo API đang bị giới hạn tốc độ (rate-overlimit). Vui lòng đợi 2-5 phút rồi đồng bộ lại.'
+        );
+      }
+
       const normalizedHints = Array.from(
         new Set(
           responseHints
@@ -771,6 +1253,13 @@ export class EvolutionProvider implements MessagingProvider {
       throw new AppError(
         'FETCH_GROUPS_EMPTY',
         `Evo API phản hồi nhưng không có nhóm hợp lệ. ${diagnostics.slice(0, 3).join(' | ')}`
+      );
+    }
+
+    if (hadRateLimitFailure) {
+      throw new AppError(
+        'FETCH_GROUPS_RATE_LIMITED',
+        'Evo API đang bị giới hạn tốc độ (rate-overlimit). Vui lòng đợi 2-5 phút rồi đồng bộ lại.'
       );
     }
 
