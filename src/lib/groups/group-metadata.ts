@@ -108,6 +108,56 @@ const toBooleanSafe = (value: unknown, depth = 0): boolean | null => {
   return null;
 };
 
+const toAdminBoolean = (value: unknown, depth = 0): boolean | null => {
+  if (depth > 4) {
+    return null;
+  }
+
+  if (typeof value === 'boolean') {
+    return value;
+  }
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value !== 0;
+  }
+
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (!normalized) {
+      return null;
+    }
+    if (
+      ['true', '1', 'yes', 'y', 'on', 'enabled', 'admin', 'superadmin', 'owner', 'creator'].includes(
+        normalized
+      )
+    ) {
+      return true;
+    }
+    if (
+      ['false', '0', 'no', 'n', 'off', 'disabled', 'member', 'participant', 'user', 'none', 'null'].includes(
+        normalized
+      )
+    ) {
+      return false;
+    }
+    return null;
+  }
+
+  const obj = asRecord(value);
+  if (!obj) {
+    return null;
+  }
+
+  for (const key of ['isAdmin', 'admin', 'role', 'isOwner', 'owner', 'type', 'status', 'value']) {
+    const nested = toAdminBoolean(obj[key], depth + 1);
+    if (nested !== null) {
+      return nested;
+    }
+  }
+
+  return null;
+};
+
 const extractBooleanByKeys = (
   source: Record<string, unknown>,
   keys: string[]
@@ -247,16 +297,42 @@ export const extractGroupExplicitCanSend = (
   ];
   const writableKeys = [
     'canSend',
+    'canSendMessage',
+    'canSendMessages',
+    'sendMessage',
+    'sendMessages',
+    'canMessage',
     'isSendable',
     'canWrite',
     'isWritable',
     'writeable',
     'writable',
     'writePermission',
-    'canPost'
+    'canPost',
+    'canPostMessage',
+    'canPostMessages',
+    'allowSend',
+    'allowedToSend',
+    'isAllowedToSend'
+  ];
+  const adminStatusKeys = [
+    'isAdmin',
+    'admin',
+    'role',
+    'userRole',
+    'participantRole',
+    'isGroupAdmin',
+    'participantIsAdmin',
+    'meIsAdmin',
+    'isCurrentUserAdmin',
+    'currentUserIsAdmin',
+    'userIsAdmin',
+    'isOwner',
+    'owner'
   ];
 
   let hasPositive = false;
+  let adminStatus: boolean | null = null;
 
   for (const source of sources) {
     const readOnly = extractBooleanByKeys(source, readOnlyKeys);
@@ -278,5 +354,26 @@ export const extractGroupExplicitCanSend = (
     }
   }
 
-  return hasPositive ? true : null;
+  for (const source of sources) {
+    if (adminStatus !== null) {
+      break;
+    }
+    for (const key of adminStatusKeys) {
+      const parsed = toAdminBoolean(source[key]);
+      if (parsed !== null) {
+        adminStatus = parsed;
+        break;
+      }
+    }
+  }
+
+  if (hasPositive) {
+    return true;
+  }
+
+  if (extractGroupAdminOnly(group, metadata) && adminStatus !== null) {
+    return adminStatus;
+  }
+
+  return null;
 };

@@ -585,7 +585,47 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
         if (error.code === 'FETCH_GROUPS_RATE_LIMITED') {
           message = `${error.message} Hệ thống giữ nguyên danh sách nhóm cache hiện tại để tránh mất dữ liệu.`;
         } else if (error.code === 'FETCH_GROUPS_INCOMPLETE') {
-          message = `${error.message} Chưa cập nhật bảng để tránh hiển thị dữ liệu thiếu. Vui lòng thử lại sau 10-20 giây.`;
+          const details =
+            typeof error.details === 'object' && error.details !== null
+              ? (error.details as Record<string, unknown>)
+              : null;
+          const unresolvedBreakdown =
+            details && typeof details.unresolvedBreakdown === 'object' && details.unresolvedBreakdown !== null
+              ? (details.unresolvedBreakdown as Record<string, unknown>)
+              : null;
+          const missingName =
+            unresolvedBreakdown && typeof unresolvedBreakdown.missingName === 'number'
+              ? unresolvedBreakdown.missingName
+              : 0;
+          const missingMembers =
+            unresolvedBreakdown && typeof unresolvedBreakdown.missingMembers === 'number'
+              ? unresolvedBreakdown.missingMembers
+              : 0;
+          const missingPermission =
+            unresolvedBreakdown && typeof unresolvedBreakdown.missingPermission === 'number'
+              ? unresolvedBreakdown.missingPermission
+              : 0;
+          const detailParts: string[] = [];
+          if (missingName > 0) {
+            detailParts.push(`thiếu tên: ${missingName}`);
+          }
+          if (missingMembers > 0) {
+            detailParts.push(`thiếu số thành viên: ${missingMembers}`);
+          }
+          if (missingPermission > 0) {
+            detailParts.push(`thiếu quyền gửi: ${missingPermission}`);
+          }
+          const diagnostics = Array.isArray(details?.diagnostics)
+            ? details.diagnostics.filter((item): item is string => typeof item === 'string')
+            : [];
+          const hasDatabaseLock = diagnostics.some((item) =>
+            item.toLowerCase().includes('database lock')
+          );
+          const detailSuffix = detailParts.length > 0 ? ` Chi tiết: ${detailParts.join(', ')}.` : '';
+          const lockSuffix = hasDatabaseLock
+            ? ' Evolution API đang bận xử lý nội bộ (database lock tạm thời), vui lòng chờ thêm rồi đồng bộ lại.'
+            : '';
+          message = `${error.message} Chưa cập nhật bảng để tránh hiển thị dữ liệu thiếu. Vui lòng thử lại sau 10-20 giây.${detailSuffix}${lockSuffix}`;
         } else if (error.code === 'INSTANCE_NOT_CONNECTED' || error.code === 'INSTANCE_CONNECTION_CHECK_FAILED') {
           message = error.message;
         } else if (error.code === 'FETCH_GROUPS_DISABLED_BY_SETTINGS') {

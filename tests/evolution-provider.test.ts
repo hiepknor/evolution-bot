@@ -547,6 +547,136 @@ describe('evolution provider', () => {
     expect(groups.find((item) => item.chatId === '801@g.us')?.name).toBe('Group 801');
   });
 
+  it('accepts non-identifier group name as resolved even when subject is missing', async () => {
+    let findGroupInfosCallCount = 0;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input);
+      const method = String(init?.method ?? 'GET').toUpperCase();
+
+      if (url.includes('/group/fetchAllGroups/instance-a?getParticipants=false') && method === 'GET') {
+        return {
+          ok: true,
+          text: async () => JSON.stringify([{ id: '805@g.us', name: 'Rolex Dealer VN', size: 18 }])
+        } as Response;
+      }
+
+      if (url.includes('/group/findGroupInfos/instance-a?') && method === 'GET') {
+        findGroupInfosCallCount += 1;
+      }
+
+      return {
+        ok: true,
+        text: async () => JSON.stringify([])
+      } as Response;
+    });
+
+    const provider = new EvolutionProvider({ baseUrl: 'http://localhost:8080', apiKey: 'x' });
+    const groups = await provider.fetchGroups('instance-a');
+
+    expect(findGroupInfosCallCount).toBe(0);
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.name).toBe('Rolex Dealer VN');
+    expect(groups[0]?.membersCount).toBe(18);
+  });
+
+  it('does not cache incomplete findGroupInfos payloads across retry attempts', async () => {
+    let findGroupInfosCallCount = 0;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input);
+      const method = String(init?.method ?? 'GET').toUpperCase();
+
+      if (url.includes('/group/fetchAllGroups/instance-a?getParticipants=false') && method === 'GET') {
+        return {
+          ok: true,
+          text: async () => JSON.stringify([{ id: '820@g.us', name: '820' }])
+        } as Response;
+      }
+
+      if (url.includes('/group/findGroupInfos/instance-a?') && method === 'GET') {
+        findGroupInfosCallCount += 1;
+        if (findGroupInfosCallCount === 1) {
+          return {
+            ok: true,
+            text: async () => JSON.stringify({ id: '820@g.us', name: '820' })
+          } as Response;
+        }
+        return {
+          ok: true,
+          text: async () => JSON.stringify({ id: '820@g.us', subject: 'Group 820', size: 20 })
+        } as Response;
+      }
+
+      return {
+        ok: true,
+        text: async () => JSON.stringify([])
+      } as Response;
+    });
+
+    const provider = new EvolutionProvider({ baseUrl: 'http://localhost:8080', apiKey: 'x' });
+    const groups = await provider.fetchGroups('instance-a');
+
+    expect(findGroupInfosCallCount).toBeGreaterThanOrEqual(2);
+    expect(groups.find((item) => item.chatId === '820@g.us')?.name).toBe('Group 820');
+    expect(groups.find((item) => item.chatId === '820@g.us')?.membersCount).toBe(20);
+  });
+
+  it('recovers unresolved groups in delayed recovery rounds when initial enrich attempts fail', async () => {
+    let findGroupInfosCallCount = 0;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input);
+      const method = String(init?.method ?? 'GET').toUpperCase();
+
+      if (url.includes('/group/fetchAllGroups/instance-a?getParticipants=false') && method === 'GET') {
+        return {
+          ok: true,
+          text: async () => JSON.stringify([{ id: '821@g.us', name: '821', size: 0 }])
+        } as Response;
+      }
+
+      if (url.includes('/group/fetchAllGroups/instance-a?getParticipants=true') && method === 'GET') {
+        return {
+          ok: true,
+          text: async () => JSON.stringify([])
+        } as Response;
+      }
+
+      if (url.includes('/group/findGroupInfos/instance-a?') && method === 'GET') {
+        findGroupInfosCallCount += 1;
+        if (findGroupInfosCallCount <= 4) {
+          return {
+            ok: false,
+            status: 500,
+            text: async () => JSON.stringify({ message: 'Internal error' })
+          } as Response;
+        }
+        return {
+          ok: true,
+          text: async () => JSON.stringify({ id: '821@g.us', subject: 'Group 821', size: 22 })
+        } as Response;
+      }
+
+      if (url.includes('/instance/fetchInstances') || url.includes('/instance/connectionState/instance-a')) {
+        return {
+          ok: true,
+          text: async () => JSON.stringify([])
+        } as Response;
+      }
+
+      return {
+        ok: true,
+        text: async () => JSON.stringify([])
+      } as Response;
+    });
+
+    const provider = new EvolutionProvider({ baseUrl: 'http://localhost:8080', apiKey: 'x' });
+    const groups = await provider.fetchGroups('instance-a');
+
+    expect(findGroupInfosCallCount).toBeGreaterThan(4);
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.name).toBe('Group 821');
+    expect(groups[0]?.membersCount).toBe(22);
+  });
+
   it('fails sync when one group cannot be fully enriched by findGroupInfos', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
       const url = String(input);
@@ -589,7 +719,117 @@ describe('evolution provider', () => {
     await expect(provider.fetchGroups('instance-a')).rejects.toMatchObject({
       code: 'FETCH_GROUPS_INCOMPLETE'
     });
-  });
+  }, 30000);
+
+  it('does not fail sync when admin-only permission remains unknown but name and members are resolved', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input);
+      const method = String(init?.method ?? 'GET').toUpperCase();
+
+      if (url.includes('/group/fetchAllGroups/instance-a?getParticipants=false') && method === 'GET') {
+        return {
+          ok: true,
+          text: async () =>
+            JSON.stringify([
+              { id: '812@g.us', subject: 'Admin Unknown 812', announce: true, size: 15 }
+            ])
+        } as Response;
+      }
+
+      if (url.includes('/group/findGroupInfos/instance-a?') && method === 'GET') {
+        return {
+          ok: true,
+          text: async () =>
+            JSON.stringify({
+              id: '812@g.us',
+              subject: 'Admin Unknown 812',
+              announce: true,
+              size: 15
+            })
+        } as Response;
+      }
+
+      if (url.includes('/group/fetchAllGroups/instance-a?getParticipants=true') && method === 'GET') {
+        return {
+          ok: true,
+          text: async () => JSON.stringify([])
+        } as Response;
+      }
+
+      if (url.includes('/instance/fetchInstances') || url.includes('/instance/connectionState/instance-a')) {
+        return {
+          ok: true,
+          text: async () => JSON.stringify([])
+        } as Response;
+      }
+
+      return {
+        ok: true,
+        text: async () => JSON.stringify([])
+      } as Response;
+    });
+
+    const provider = new EvolutionProvider({ baseUrl: 'http://localhost:8080', apiKey: 'x' });
+    const groups = await provider.fetchGroups('instance-a');
+    const group = groups.find((item) => item.chatId === '812@g.us');
+
+    expect(group).toBeDefined();
+    expect(group?.adminOnly).toBe(true);
+    expect(group?.membersCount).toBe(15);
+    expect(group?.name).toBe('Admin Unknown 812');
+    expect(group?.raw?.[GROUP_PERMISSION_HINT_KEY]).toBeUndefined();
+  }, 30000);
+
+  it('applies fallback names when only unresolved metadata is missing group subject', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input);
+      const method = String(init?.method ?? 'GET').toUpperCase();
+
+      if (url.includes('/group/fetchAllGroups/instance-a?getParticipants=false') && method === 'GET') {
+        return {
+          ok: true,
+          text: async () =>
+            JSON.stringify([{ id: '120363198683046088@g.us', name: '120363198683046088', size: 31 }])
+        } as Response;
+      }
+
+      if (url.includes('/group/findGroupInfos/instance-a?') && method === 'GET') {
+        return {
+          ok: false,
+          status: 404,
+          text: async () => JSON.stringify({ message: 'Not found' })
+        } as Response;
+      }
+
+      if (url.includes('/group/fetchAllGroups/instance-a?getParticipants=true') && method === 'GET') {
+        return {
+          ok: true,
+          text: async () => JSON.stringify([])
+        } as Response;
+      }
+
+      if (url.includes('/instance/fetchInstances') || url.includes('/instance/connectionState/instance-a')) {
+        return {
+          ok: true,
+          text: async () => JSON.stringify([])
+        } as Response;
+      }
+
+      return {
+        ok: true,
+        text: async () => JSON.stringify([])
+      } as Response;
+    });
+
+    const provider = new EvolutionProvider({ baseUrl: 'http://localhost:8080', apiKey: 'x' });
+    const groups = await provider.fetchGroups('instance-a');
+    const group = groups.find((item) => item.chatId === '120363198683046088@g.us');
+
+    expect(group).toBeDefined();
+    expect(group?.membersCount).toBe(31);
+    expect(group?.name).toContain('Nhóm chưa có tên');
+    expect(group?.raw?.__nameFallback).toBe(true);
+  }, 30000);
 
   it('dedupes findGroupInfos requests for the same group chat id in one sync batch', async () => {
     let findGroupInfosCallCount = 0;
@@ -940,6 +1180,25 @@ describe('evolution provider', () => {
     expect(groups.find((item) => item.chatId === '202@g.us')?.adminOnly).toBe(true);
     expect(groups.find((item) => item.chatId === '203@g.us')?.adminOnly).toBe(false);
     expect(groups.find((item) => item.chatId === '204@g.us')?.adminOnly).toBe(true);
+  });
+
+  it('infers send permission from admin status fields on admin-only groups', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      text: async () =>
+        JSON.stringify([
+          { jid: '205@g.us', subject: 'Group 205', size: 20, announce: true, isAdmin: true },
+          { jid: '206@g.us', subject: 'Group 206', size: 20, announce: true, metadata: { role: 'member' } }
+        ])
+    } as Response);
+
+    const provider = new EvolutionProvider({ baseUrl: 'http://localhost:8080', apiKey: 'x' });
+    const groups = await provider.fetchGroups('instance-a');
+
+    expect(groups.find((item) => item.chatId === '205@g.us')?.sendable).toBe(true);
+    expect(groups.find((item) => item.chatId === '205@g.us')?.raw?.[GROUP_PERMISSION_HINT_KEY]).toBe(true);
+    expect(groups.find((item) => item.chatId === '206@g.us')?.sendable).toBe(false);
+    expect(groups.find((item) => item.chatId === '206@g.us')?.raw?.[GROUP_PERMISSION_HINT_KEY]).toBe(false);
   });
 
   it('enriches admin-only groups with participant admin check for current instance', async () => {

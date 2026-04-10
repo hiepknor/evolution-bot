@@ -28,20 +28,25 @@ interface EvolutionProviderOptions {
   apiKey: string;
 }
 
-const ADMIN_PERMISSION_DEEP_CHECK_TIMEOUT_MS = 12_000;
+const ADMIN_PERMISSION_DEEP_CHECK_TIMEOUT_MS = 600_000;
 const INSTANCE_LOOKUP_TIMEOUT_MS = 8_000;
 const SETTINGS_LOOKUP_TIMEOUT_MS = 6_000;
 const MISSING_GROUP_RETENTION_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 const GENERIC_MISSING_GROUP_RETENTION_WINDOW_MS = 24 * 60 * 60 * 1000;
 const REFERENCE_FALLBACK_GROUP_LIMIT = 600;
 const GROUP_JID_PATTERN = /([0-9a-z._:-]+@g\.us)\b/gi;
-const FIND_GROUP_INFOS_TIMEOUT_MS = 12_000;
-const FIND_GROUP_INFOS_CONCURRENCY = 5;
+const FIND_GROUP_INFOS_TIMEOUT_MS = 45_000;
+const FIND_GROUP_INFOS_CONCURRENCY = 2;
 const FIND_GROUP_INFOS_CACHE_TTL_MS = 5 * 60 * 1000;
-const FIND_GROUP_INFOS_MAX_ATTEMPTS = 2;
-const FIND_GROUP_INFOS_RETRY_DELAY_MS = 220;
-const FIND_GROUP_INFOS_QUERY_KEYS = ['groupJid', 'jid', 'group', 'chatId', 'id'] as const;
+const FIND_GROUP_INFOS_MAX_ATTEMPTS = 4;
+const FIND_GROUP_INFOS_RETRY_DELAY_MS = 700;
+const FIND_GROUP_INFOS_DB_LOCK_RETRY_DELAY_MS = 1_800;
+const FIND_GROUP_INFOS_QUERY_KEYS = ['groupJid'] as const;
+const FIND_GROUP_INFOS_RECOVERY_QUERY_KEYS = ['groupJid', 'jid', 'group', 'chatId', 'id'] as const;
 const INCOMPLETE_GROUP_DETAILS_SAMPLE_SIZE = 6;
+const INCOMPLETE_RECOVERY_MAX_ROUNDS = 2;
+const INCOMPLETE_RECOVERY_DELAY_MS = 15_000;
+const FINAL_NAME_RECOVERY_MAX_GROUPS = 30;
 
 const findGroupInfosCache = new Map<string, { payload: unknown; expiresAt: number }>();
 const findGroupInfosInflight = new Map<string, Promise<unknown>>();
@@ -162,6 +167,20 @@ const normalizeGroupJidForLookup = (value: string): string => {
   return normalized;
 };
 
+const extractGroupLocalPart = (value: string): string => {
+  const normalized = normalizeGroupJidForLookup(value);
+  return normalized.split('@')[0] ?? '';
+};
+
+const buildFallbackGroupName = (chatId: string): string => {
+  const localPart = extractGroupLocalPart(chatId);
+  if (!localPart) {
+    return 'Nhóm chưa có tên';
+  }
+  const suffix = localPart.slice(-4);
+  return suffix ? `Nhóm chưa có tên (${suffix})` : 'Nhóm chưa có tên';
+};
+
 const buildGroupLookupCandidates = (groupJid: string): string[] => {
   const normalized = normalizeGroupJidForLookup(groupJid);
   if (!normalized) {
@@ -207,26 +226,33 @@ const extractGroupSubject = (group: Group): string => {
   return '';
 };
 
+const hasResolvedGroupName = (group: Group): boolean => {
+  const subject = extractGroupSubject(group);
+  if (subject.length > 0) {
+    return true;
+  }
+
+  const normalizedName = normalizeText(group.name);
+  if (!normalizedName) {
+    return false;
+  }
+
+  return !isIdentifierLikeName(normalizedName, group.chatId);
+};
+
 const isGroupDetailsResolved = (group: Group): boolean => {
   if (!group.chatId.endsWith('@g.us')) {
     return true;
   }
 
-  const hasSubject = extractGroupSubject(group).length > 0;
-  if (!hasSubject) {
+  if (!hasResolvedGroupName(group)) {
     return false;
   }
 
   if (group.membersCount <= 0) {
     return false;
   }
-
-  if (!group.adminOnly) {
-    return true;
-  }
-
-  const permissionHint = resolveGroupPermissionHint(group);
-  return typeof permissionHint === 'boolean';
+  return true;
 };
 
 const needsGroupDetailsEnrichment = (group: Group): boolean => !isGroupDetailsResolved(group);
@@ -402,6 +428,55 @@ const isRateLimitError = (error: unknown): boolean => {
   return containsRateLimitSignal(error);
 };
 
+const containsDatabaseLockSignal = (value: unknown, depth = 0): boolean => {
+  if (depth > 8 || value === null || value === undefined) {
+    return false;
+  }
+
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (!normalized) {
+      return false;
+    }
+    return /(database is locked|sqlite_busy|code:\s*5\b)/i.test(normalized);
+  }
+
+  if (Array.isArray(value)) {
+    return value.some((item) => containsDatabaseLockSignal(item, depth + 1));
+  }
+
+  const obj = asRecord(value);
+  if (!obj) {
+    return false;
+  }
+
+  for (const key of Object.keys(obj)) {
+    if (containsDatabaseLockSignal(key, depth + 1)) {
+      return true;
+    }
+  }
+
+  for (const nested of Object.values(obj)) {
+    if (containsDatabaseLockSignal(nested, depth + 1)) {
+      return true;
+    }
+  }
+
+  return false;
+};
+
+const isDatabaseLockError = (error: unknown): boolean => {
+  if (error instanceof AppError) {
+    return containsDatabaseLockSignal(error.message) || containsDatabaseLockSignal(error.details);
+  }
+
+  if (error instanceof Error) {
+    return containsDatabaseLockSignal(error.message);
+  }
+
+  return containsDatabaseLockSignal(error);
+};
+
 const extractGroupList = (value: unknown, depth = 0): EvolutionGroupDto[] => {
   if (depth > 8 || value === null || value === undefined) {
     return [];
@@ -508,6 +583,42 @@ const addIdentifierVariants = (target: Set<string>, value: unknown): void => {
   }
 };
 
+const collectIdentifierHints = (
+  target: Set<string>,
+  value: unknown,
+  depth = 0
+): void => {
+  if (depth > 3 || value === null || value === undefined) {
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectIdentifierHints(target, item, depth + 1);
+    }
+    return;
+  }
+
+  const obj = asRecord(value);
+  if (!obj) {
+    addIdentifierVariants(target, value);
+    return;
+  }
+
+  const keyHintPattern = /(owner|jid|wid|number|phone|me|user|participant|sender|id)$/i;
+  for (const [key, nested] of Object.entries(obj)) {
+    if (keyHintPattern.test(key)) {
+      addIdentifierVariants(target, nested);
+    }
+  }
+
+  for (const key of ['instance', 'owner', 'profile', 'connection', 'me', 'user', 'data']) {
+    if (Object.prototype.hasOwnProperty.call(obj, key)) {
+      collectIdentifierHints(target, obj[key], depth + 1);
+    }
+  }
+};
+
 const extractInstanceName = (entry: EvolutionInstanceDto): string => {
   return String(entry.name ?? entry.instanceName ?? entry.instance?.instanceName ?? '').trim();
 };
@@ -608,12 +719,80 @@ const resolveParticipantAdminState = (participant: Record<string, unknown>): boo
   return null;
 };
 
+const resolveParticipantSelfState = (
+  participant: Record<string, unknown>,
+  selfIdentifiers: Set<string>
+): boolean => {
+  const selfFlagCandidates = [
+    participant.isMe,
+    participant.me,
+    participant.isSelf,
+    participant.self,
+    participant.isCurrentUser,
+    participant.isOwner
+  ];
+  if (selfFlagCandidates.some((flag) => flag === true)) {
+    return true;
+  }
+
+  if (selfIdentifiers.size === 0) {
+    return false;
+  }
+
+  const participantIdentifiers = new Set<string>();
+  addIdentifierVariants(participantIdentifiers, participant.phoneNumber);
+  addIdentifierVariants(participantIdentifiers, participant.id);
+  addIdentifierVariants(participantIdentifiers, participant.jid);
+  addIdentifierVariants(participantIdentifiers, participant.participant);
+  addIdentifierVariants(participantIdentifiers, participant.user);
+  addIdentifierVariants(participantIdentifiers, participant.number);
+  return Array.from(participantIdentifiers).some((id) => selfIdentifiers.has(id));
+};
+
 const resolveSelfAdminPermission = (
   dto: EvolutionGroupDto,
   selfIdentifiers: Set<string>
 ): boolean | null => {
-  if (selfIdentifiers.size === 0) {
-    return null;
+  const metadata = asRecord(dto.groupMetadata ?? dto.metadata) ?? {};
+  const ownerCandidates = [
+    dto.owner,
+    dto.ownerJid,
+    dto.ownerId,
+    metadata.owner,
+    metadata.ownerJid,
+    metadata.ownerId,
+    asRecord(metadata.groupInfo)?.owner,
+    asRecord(metadata.groupInfo)?.ownerJid
+  ];
+  for (const ownerCandidate of ownerCandidates) {
+    const ownerIdentifiers = new Set<string>();
+    addIdentifierVariants(ownerIdentifiers, ownerCandidate);
+    const isSelfOwner = Array.from(ownerIdentifiers).some((id) => selfIdentifiers.has(id));
+    if (isSelfOwner) {
+      return true;
+    }
+  }
+
+  const adminListCandidates = [
+    dto.admins,
+    dto.adminList,
+    metadata.admins,
+    metadata.adminList,
+    asRecord(metadata.groupInfo)?.admins,
+    asRecord(metadata.groupInfo)?.adminList
+  ];
+  for (const adminListCandidate of adminListCandidates) {
+    if (!Array.isArray(adminListCandidate)) {
+      continue;
+    }
+    const hasSelfInAdminList = adminListCandidate.some((entry) => {
+      const identifiers = new Set<string>();
+      addIdentifierVariants(identifiers, entry);
+      return Array.from(identifiers).some((id) => selfIdentifiers.has(id));
+    });
+    if (hasSelfInAdminList) {
+      return true;
+    }
   }
 
   const participants = collectParticipants(dto);
@@ -624,13 +803,7 @@ const resolveSelfAdminPermission = (
   let hasSelfParticipant = false;
 
   for (const participant of participants) {
-    const participantIdentifiers = new Set<string>();
-    addIdentifierVariants(participantIdentifiers, participant.phoneNumber);
-    addIdentifierVariants(participantIdentifiers, participant.id);
-    addIdentifierVariants(participantIdentifiers, participant.jid);
-    addIdentifierVariants(participantIdentifiers, participant.participant);
-
-    const isSelf = Array.from(participantIdentifiers).some((id) => selfIdentifiers.has(id));
+    const isSelf = resolveParticipantSelfState(participant, selfIdentifiers);
     if (!isSelf) {
       continue;
     }
@@ -826,6 +999,28 @@ const looksLikeGroup = (dto: EvolutionGroupDto, normalized: Group): boolean => {
   }
 
   return false;
+};
+
+const isFindGroupInfosPayloadReusable = (payload: unknown, targetChatId: string): boolean => {
+  const normalizedTarget = normalizeGroupJidForLookup(targetChatId);
+  if (!normalizedTarget) {
+    return false;
+  }
+
+  const detailedGroups = extractGroupList(payload)
+    .map((dto) => normalizeGroup(dto))
+    .filter((group) => group.chatId.length > 0);
+  const directMatch = detailedGroups.find(
+    (group) => normalizeGroupJidForLookup(group.chatId) === normalizedTarget
+  );
+  if (!directMatch) {
+    if (detailedGroups.length === 1) {
+      return isGroupDetailsResolved(detailedGroups[0] as Group);
+    }
+    return false;
+  }
+
+  return isGroupDetailsResolved(directMatch);
 };
 
 const toBooleanFlag = (value: unknown): boolean | null => {
@@ -1093,10 +1288,12 @@ export class EvolutionProvider implements MessagingProvider {
     const groupsByChatId = new Map<string, Group>();
     const sourceByChatId = new Map<string, GroupFetchSource>();
     const reusablePermissionByChatId = new Map<string, boolean>();
+    const previousGroupByChatId = new Map<string, Group>();
     for (const previousGroup of options?.previousGroups ?? []) {
       if (!previousGroup.chatId.endsWith('@g.us')) {
         continue;
       }
+      previousGroupByChatId.set(previousGroup.chatId, previousGroup);
       const hint = extractReusablePermissionHint(previousGroup);
       if (typeof hint === 'boolean') {
         reusablePermissionByChatId.set(previousGroup.chatId, hint);
@@ -1133,7 +1330,13 @@ export class EvolutionProvider implements MessagingProvider {
       return `${this.cacheNamespace}::${normalizedInstance}::${normalizedGroupJid}`;
     };
 
-    const requestFindGroupInfos = async (groupJid: string): Promise<unknown> => {
+    const requestFindGroupInfos = async (
+      groupJid: string,
+      options?: {
+        broadLookup?: boolean;
+        bypassCache?: boolean;
+      }
+    ): Promise<unknown> => {
       const normalizedGroupJid = normalizeGroupJidForLookup(groupJid);
       if (!normalizedGroupJid) {
         throw new AppError('INVALID_GROUP_ID', 'Group JID is required');
@@ -1144,33 +1347,45 @@ export class EvolutionProvider implements MessagingProvider {
       }
 
       const cacheKey = buildFindGroupInfosCacheKey(normalizedGroupJid);
+      const queryKeys = options?.broadLookup ? FIND_GROUP_INFOS_RECOVERY_QUERY_KEYS : FIND_GROUP_INFOS_QUERY_KEYS;
+      const useCache = !options?.bypassCache && !options?.broadLookup;
+      const useInflight = useCache;
       const now = Date.now();
-      const cached = findGroupInfosCache.get(cacheKey);
-      if (cached && cached.expiresAt > now) {
-        return cached.payload;
-      }
-      if (cached && cached.expiresAt <= now) {
-        findGroupInfosCache.delete(cacheKey);
+      if (useCache) {
+        const cached = findGroupInfosCache.get(cacheKey);
+        if (cached && cached.expiresAt > now) {
+          if (isFindGroupInfosPayloadReusable(cached.payload, normalizedGroupJid)) {
+            return cached.payload;
+          }
+          findGroupInfosCache.delete(cacheKey);
+        }
+        if (cached && cached.expiresAt <= now) {
+          findGroupInfosCache.delete(cacheKey);
+        }
       }
 
-      const inflight = findGroupInfosInflight.get(cacheKey);
-      if (inflight) {
-        return inflight;
+      if (useInflight) {
+        const inflight = findGroupInfosInflight.get(cacheKey);
+        if (inflight) {
+          return inflight;
+        }
       }
 
-      const requestPromise = (async () => {
+      const requestOperation = async () => {
         let lastError: unknown;
         for (const lookupValue of lookupCandidates) {
-          for (const queryKey of FIND_GROUP_INFOS_QUERY_KEYS) {
+          for (const queryKey of queryKeys) {
             try {
               const payload = await this.client.request<unknown>({
                 path: `/group/findGroupInfos/${encodedInstanceName}?${queryKey}=${encodeURIComponent(lookupValue)}`,
                 timeoutMs: FIND_GROUP_INFOS_TIMEOUT_MS
               });
-              findGroupInfosCache.set(cacheKey, {
-                payload,
-                expiresAt: Date.now() + FIND_GROUP_INFOS_CACHE_TTL_MS
-              });
+              if (useCache && isFindGroupInfosPayloadReusable(payload, normalizedGroupJid)) {
+                findGroupInfosCache.set(cacheKey, {
+                  payload,
+                  expiresAt: Date.now() + FIND_GROUP_INFOS_CACHE_TTL_MS
+                });
+              }
               return payload;
             } catch (error) {
               lastError = error;
@@ -1190,8 +1405,13 @@ export class EvolutionProvider implements MessagingProvider {
         }
 
         throw lastError ?? new AppError('FETCH_GROUPS_FAILED', 'Failed to fetch group details');
-      })();
+      };
 
+      if (!useInflight) {
+        return requestOperation();
+      }
+
+      const requestPromise = requestOperation();
       findGroupInfosInflight.set(cacheKey, requestPromise);
       try {
         return await requestPromise;
@@ -1206,6 +1426,7 @@ export class EvolutionProvider implements MessagingProvider {
       }
 
       const targetLookup = normalizeGroupJidForLookup(targetChatId);
+      const targetLocalPart = extractGroupLocalPart(targetChatId);
       const directMatch = candidates.find(
         (candidate) => normalizeGroupJidForLookup(candidate.chatId) === targetLookup
       );
@@ -1213,12 +1434,51 @@ export class EvolutionProvider implements MessagingProvider {
         return directMatch;
       }
 
-      const subjectMatch = candidates.find((candidate) => extractGroupSubject(candidate).length > 0);
-      if (subjectMatch) {
-        return subjectMatch;
+      const localPartMatch = candidates.find((candidate) => {
+        const candidateLocalPart = extractGroupLocalPart(candidate.chatId);
+        return Boolean(targetLocalPart) && candidateLocalPart === targetLocalPart;
+      });
+      if (localPartMatch) {
+        return localPartMatch;
       }
 
-      return candidates[0] ?? null;
+      if (candidates.length === 1) {
+        return candidates[0] ?? null;
+      }
+
+      return null;
+    };
+
+    const pickFindGroupInfosEntry = (
+      targetChatId: string,
+      entries: Array<{ dto: EvolutionGroupDto; group: Group }>
+    ): { dto: EvolutionGroupDto; group: Group } | null => {
+      if (entries.length === 0) {
+        return null;
+      }
+
+      const targetLookup = normalizeGroupJidForLookup(targetChatId);
+      const directMatch = entries.find(
+        (entry) => normalizeGroupJidForLookup(entry.group.chatId) === targetLookup
+      );
+      if (directMatch) {
+        return directMatch;
+      }
+
+      const targetLocalPart = extractGroupLocalPart(targetChatId);
+      const localPartMatch = entries.find((entry) => {
+        const candidateLocalPart = extractGroupLocalPart(entry.group.chatId);
+        return Boolean(targetLocalPart) && candidateLocalPart === targetLocalPart;
+      });
+      if (localPartMatch) {
+        return localPartMatch;
+      }
+
+      if (entries.length === 1) {
+        return entries[0] ?? null;
+      }
+
+      return null;
     };
 
     let totalFallbackAdded = 0;
@@ -1421,79 +1681,13 @@ export class EvolutionProvider implements MessagingProvider {
     }
 
     if (groupsByChatId.size > 0) {
-      const chatIdsNeedingDetails = Array.from(
-        new Set(
-          Array.from(groupsByChatId.values())
-            .filter((group) => needsGroupDetailsEnrichment(group))
-            .map((group) => group.chatId)
-        )
-      );
-
-      if (chatIdsNeedingDetails.length > 0) {
-        let shouldSkipFindGroupInfos = false;
-        let errorCount = 0;
-        let attempt = 0;
-        let pendingChatIds = new Set(chatIdsNeedingDetails);
-
-        while (attempt < FIND_GROUP_INFOS_MAX_ATTEMPTS && pendingChatIds.size > 0 && !shouldSkipFindGroupInfos) {
-          const unresolvedInAttempt = new Set<string>();
-          const batchChatIds = Array.from(pendingChatIds);
-
-          await runWithConcurrency(batchChatIds, FIND_GROUP_INFOS_CONCURRENCY, async (chatId) => {
-            if (shouldSkipFindGroupInfos) {
-              unresolvedInAttempt.add(chatId);
-              return;
-            }
-
-            try {
-              const payload = await requestFindGroupInfos(chatId);
-              const detailedGroups = extractGroupList(payload)
-                .map((dto) => normalizeGroup(dto))
-                .filter((group) => group.chatId.length > 0);
-              const candidate = pickFindGroupInfosCandidate(chatId, detailedGroups);
-              if (candidate) {
-                const current = groupsByChatId.get(chatId);
-                if (current) {
-                  const hydratedForTarget =
-                    candidate.chatId === chatId
-                      ? candidate
-                      : {
-                          ...candidate,
-                          id: chatId,
-                          chatId
-                        };
-                  groupsByChatId.set(chatId, mergeHydratedGroupSnapshot(current, hydratedForTarget));
-                }
-              }
-            } catch (error) {
-              if (error instanceof AppError && (error.status === 401 || error.status === 403)) {
-                shouldSkipFindGroupInfos = true;
-              }
-              errorCount += 1;
-            }
-
-            const current = groupsByChatId.get(chatId);
-            if (!current || !isGroupDetailsResolved(current)) {
-              unresolvedInAttempt.add(chatId);
-            }
-          });
-
-          pendingChatIds = unresolvedInAttempt;
-          attempt += 1;
-
-          if (pendingChatIds.size > 0 && attempt < FIND_GROUP_INFOS_MAX_ATTEMPTS && !shouldSkipFindGroupInfos) {
-            await new Promise((resolve) => {
-              setTimeout(resolve, FIND_GROUP_INFOS_RETRY_DELAY_MS);
-            });
-          }
+      for (const [chatId, currentGroup] of groupsByChatId.entries()) {
+        const previousGroup = previousGroupByChatId.get(chatId);
+        if (!previousGroup) {
+          continue;
         }
-
-        if (errorCount > 0) {
-          diagnostics.push(`findGroupInfos errors=${errorCount}`);
-        }
-        if (pendingChatIds.size > 0) {
-          diagnostics.push(`findGroupInfos unresolved=${pendingChatIds.size}/${chatIdsNeedingDetails.length}`);
-        }
+        const restored = mergeHydratedGroupSnapshot(currentGroup, previousGroup);
+        groupsByChatId.set(chatId, restored);
       }
 
       for (const group of groupsByChatId.values()) {
@@ -1509,6 +1703,171 @@ export class EvolutionProvider implements MessagingProvider {
           continue;
         }
         groupsByChatId.set(group.chatId, applyAdminPermissionHint(group, reusableHint));
+      }
+
+      let selfIdentifiersPromise: Promise<Set<string>> | null = null;
+      const loadSelfIdentifiers = async (): Promise<Set<string>> => {
+        if (selfIdentifiersPromise) {
+          return selfIdentifiersPromise;
+        }
+
+        selfIdentifiersPromise = (async () => {
+          const identifiers = new Set<string>();
+          try {
+            const instancesData = await this.client.request<EvolutionInstanceDto[] | Record<string, unknown>>({
+              path: '/instance/fetchInstances',
+              timeoutMs: INSTANCE_LOOKUP_TIMEOUT_MS
+            });
+            if (Array.isArray(instancesData)) {
+              const selectedInstance = instancesData.find((entry) => {
+                const name = extractInstanceName(entry).toLowerCase();
+                return name.length > 0 && name === trimmedInstanceName.toLowerCase();
+              });
+              if (selectedInstance) {
+                for (const id of buildSelfIdentifiers(selectedInstance)) {
+                  identifiers.add(id);
+                }
+                collectIdentifierHints(identifiers, selectedInstance);
+              }
+            }
+          } catch {
+            // Keep best-effort identifiers from other probes below.
+          }
+
+          try {
+            const stateData = await this.client.request<Record<string, unknown>>({
+              path: `/instance/connectionState/${encodedInstanceName}`,
+              timeoutMs: INSTANCE_LOOKUP_TIMEOUT_MS
+            });
+            collectIdentifierHints(identifiers, stateData);
+          } catch {
+            // Ignore connection state lookup failures for identifier probing.
+          }
+
+          return identifiers;
+        })();
+
+        return selfIdentifiersPromise;
+      };
+
+      const hydrateGroupFromEntries = (
+        chatId: string,
+        entries: Array<{ dto: EvolutionGroupDto; group: Group }>,
+        selfIdentifiers: Set<string>
+      ): boolean => {
+        const current = groupsByChatId.get(chatId);
+        if (!current) {
+          return false;
+        }
+
+        const matchedEntry = pickFindGroupInfosEntry(chatId, entries);
+        if (!matchedEntry) {
+          return false;
+        }
+
+        const candidate = matchedEntry.group;
+        const hydratedForTarget =
+          candidate.chatId === chatId
+            ? candidate
+            : {
+                ...candidate,
+                id: chatId,
+                chatId
+              };
+
+        let merged = mergeHydratedGroupSnapshot(current, hydratedForTarget);
+        if (
+          merged.adminOnly &&
+          typeof resolveGroupPermissionHint(merged) !== 'boolean' &&
+          selfIdentifiers.size > 0
+        ) {
+          const selfAdminPermission = resolveSelfAdminPermission(matchedEntry.dto, selfIdentifiers);
+          if (typeof selfAdminPermission === 'boolean') {
+            merged = applyAdminPermissionHint(merged, selfAdminPermission);
+          }
+        }
+
+        groupsByChatId.set(chatId, merged);
+        return true;
+      };
+
+      const chatIdsNeedingDetails = Array.from(
+        new Set(
+          Array.from(groupsByChatId.values())
+            .filter((group) => needsGroupDetailsEnrichment(group))
+            .map((group) => group.chatId)
+        )
+      );
+
+      if (chatIdsNeedingDetails.length > 0) {
+        const selfIdentifiers = await loadSelfIdentifiers();
+        let shouldSkipFindGroupInfos = false;
+        let errorCount = 0;
+        let attempt = 0;
+        let pendingChatIds = new Set(chatIdsNeedingDetails);
+        let hadDatabaseLockError = false;
+
+        while (attempt < FIND_GROUP_INFOS_MAX_ATTEMPTS && pendingChatIds.size > 0 && !shouldSkipFindGroupInfos) {
+          const unresolvedInAttempt = new Set<string>();
+          const batchChatIds = Array.from(pendingChatIds);
+          let hadDatabaseLockInAttempt = false;
+
+          await runWithConcurrency(batchChatIds, FIND_GROUP_INFOS_CONCURRENCY, async (chatId) => {
+            if (shouldSkipFindGroupInfos) {
+              unresolvedInAttempt.add(chatId);
+              return;
+            }
+
+            try {
+              const payload = await requestFindGroupInfos(chatId);
+              const detailsEntries = extractGroupList(payload)
+                .map((dto) => ({
+                  dto,
+                  group: normalizeGroup(dto)
+                }))
+                .filter((entry) => entry.group.chatId.length > 0);
+              hydrateGroupFromEntries(chatId, detailsEntries, selfIdentifiers);
+            } catch (error) {
+              if (error instanceof AppError && (error.status === 401 || error.status === 403)) {
+                shouldSkipFindGroupInfos = true;
+              }
+              if (isDatabaseLockError(error)) {
+                hadDatabaseLockInAttempt = true;
+              }
+              errorCount += 1;
+            }
+
+            const current = groupsByChatId.get(chatId);
+            if (!current || !isGroupDetailsResolved(current)) {
+              unresolvedInAttempt.add(chatId);
+            }
+          });
+
+          pendingChatIds = unresolvedInAttempt;
+          attempt += 1;
+          if (hadDatabaseLockInAttempt) {
+            hadDatabaseLockError = true;
+          }
+
+          if (pendingChatIds.size > 0 && attempt < FIND_GROUP_INFOS_MAX_ATTEMPTS && !shouldSkipFindGroupInfos) {
+            const retryDelayMs = hadDatabaseLockInAttempt
+              ? FIND_GROUP_INFOS_DB_LOCK_RETRY_DELAY_MS
+              : FIND_GROUP_INFOS_RETRY_DELAY_MS;
+            await new Promise((resolve) => {
+              setTimeout(resolve, retryDelayMs);
+            });
+          }
+        }
+
+        if (errorCount > 0) {
+          diagnostics.push(`findGroupInfos errors=${errorCount}`);
+        }
+        if (hadDatabaseLockError) {
+          diagnostics.push('findGroupInfos transient database lock detected');
+        }
+        if (pendingChatIds.size > 0) {
+          diagnostics.push(`findGroupInfos unresolved=${pendingChatIds.size}/${chatIdsNeedingDetails.length}`);
+        }
       }
 
       let participantDetailsPayload: unknown | null = null;
@@ -1528,29 +1887,17 @@ export class EvolutionProvider implements MessagingProvider {
       );
       if (unresolvedAfterFindInfos.length > 0) {
         try {
+          const selfIdentifiers = await loadSelfIdentifiers();
           const detailsPayload = await fetchParticipantDetailsPayload();
-          const detailedGroups = extractGroupList(detailsPayload)
-            .map((dto) => normalizeGroup(dto))
-            .filter((group) => group.chatId.length > 0);
+          const detailsEntries = extractGroupList(detailsPayload)
+            .map((dto) => ({
+              dto,
+              group: normalizeGroup(dto)
+            }))
+            .filter((entry) => entry.group.chatId.length > 0);
 
           for (const unresolvedGroup of unresolvedAfterFindInfos) {
-            const current = groupsByChatId.get(unresolvedGroup.chatId);
-            if (!current) {
-              continue;
-            }
-            const candidate = pickFindGroupInfosCandidate(unresolvedGroup.chatId, detailedGroups);
-            if (!candidate) {
-              continue;
-            }
-            const hydratedForTarget =
-              candidate.chatId === unresolvedGroup.chatId
-                ? candidate
-                : {
-                    ...candidate,
-                    id: unresolvedGroup.chatId,
-                    chatId: unresolvedGroup.chatId
-                  };
-            groupsByChatId.set(unresolvedGroup.chatId, mergeHydratedGroupSnapshot(current, hydratedForTarget));
+            hydrateGroupFromEntries(unresolvedGroup.chatId, detailsEntries, selfIdentifiers);
           }
         } catch {
           diagnostics.push('fetchAllGroups getParticipants=true enrichment skipped');
@@ -1576,24 +1923,12 @@ export class EvolutionProvider implements MessagingProvider {
 
       if (unresolvedAdminOnlyGroups.length > 0) {
         try {
-          const [instancesData, detailsPayload] = await Promise.all([
-            this.client.request<EvolutionInstanceDto[] | Record<string, unknown>>({
-              path: '/instance/fetchInstances',
-              timeoutMs: INSTANCE_LOOKUP_TIMEOUT_MS
-            }),
-            fetchParticipantDetailsPayload()
-          ]);
-
-          if (Array.isArray(instancesData)) {
-            const selectedInstance = instancesData.find((entry) => {
-              const name = extractInstanceName(entry).toLowerCase();
-              return name.length > 0 && name === trimmedInstanceName.toLowerCase();
-            });
-            const selfIdentifiers = selectedInstance ? buildSelfIdentifiers(selectedInstance) : new Set<string>();
-
-            if (selfIdentifiers.size > 0) {
+          const selfIdentifiers = await loadSelfIdentifiers();
+          if (selfIdentifiers.size > 0) {
+            const adminPermissionByChatId = new Map<string, boolean | null>();
+            try {
+              const detailsPayload = await fetchParticipantDetailsPayload();
               const detailedGroups = extractGroupList(detailsPayload);
-              const adminPermissionByChatId = new Map<string, boolean | null>();
 
               for (const dto of detailedGroups) {
                 const normalized = normalizeGroup(dto);
@@ -1603,11 +1938,58 @@ export class EvolutionProvider implements MessagingProvider {
                 const selfAdminPermission = resolveSelfAdminPermission(dto, selfIdentifiers);
                 adminPermissionByChatId.set(normalized.chatId, selfAdminPermission);
               }
+            } catch {
+              diagnostics.push('fetchAllGroups getParticipants=true admin-check skipped');
+            }
 
-              for (const group of unresolvedAdminOnlyGroups) {
-                const hint = adminPermissionByChatId.get(group.chatId);
-                groupsByChatId.set(group.chatId, applyAdminPermissionHint(group, hint ?? null));
+            for (const group of unresolvedAdminOnlyGroups) {
+              const current = groupsByChatId.get(group.chatId);
+              if (!current) {
+                continue;
               }
+              const hint = adminPermissionByChatId.get(group.chatId);
+              if (typeof hint === 'boolean') {
+                groupsByChatId.set(group.chatId, applyAdminPermissionHint(current, hint));
+              }
+            }
+
+            const unresolvedAfterParticipantLookup = unresolvedAdminOnlyGroups
+              .map((group) => groupsByChatId.get(group.chatId) ?? group)
+              .filter(
+                (group) =>
+                  group.adminOnly && typeof resolveGroupPermissionHint(group) !== 'boolean'
+              );
+            if (unresolvedAfterParticipantLookup.length > 0) {
+              await runWithConcurrency(
+                unresolvedAfterParticipantLookup.map((group) => group.chatId),
+                FIND_GROUP_INFOS_CONCURRENCY,
+                async (chatId) => {
+                  try {
+                    const payload = await requestFindGroupInfos(chatId);
+                    const detailEntries = extractGroupList(payload)
+                      .map((dto) => ({
+                        dto,
+                        group: normalizeGroup(dto)
+                      }))
+                      .filter((entry) => entry.group.chatId.length > 0);
+                    const matchedEntry = pickFindGroupInfosEntry(chatId, detailEntries);
+                    if (!matchedEntry) {
+                      return;
+                    }
+                    const hint = resolveSelfAdminPermission(matchedEntry.dto, selfIdentifiers);
+                    if (typeof hint !== 'boolean') {
+                      return;
+                    }
+                    const current = groupsByChatId.get(chatId);
+                    if (!current) {
+                      return;
+                    }
+                    groupsByChatId.set(chatId, applyAdminPermissionHint(current, hint));
+                  } catch {
+                    // Keep unresolved; final guard below will decide if sync can be completed.
+                  }
+                }
+              );
             }
           }
         } catch {
@@ -1619,15 +2001,194 @@ export class EvolutionProvider implements MessagingProvider {
         needsGroupDetailsEnrichment(group)
       );
       if (unresolvedGroups.length > 0) {
-        const unresolvedSample = unresolvedGroups
+        for (const unresolvedGroup of unresolvedGroups) {
+          const previousGroup = previousGroupByChatId.get(unresolvedGroup.chatId);
+          if (!previousGroup) {
+            continue;
+          }
+          if (!isGroupDetailsResolved(previousGroup)) {
+            continue;
+          }
+          const current = groupsByChatId.get(unresolvedGroup.chatId);
+          if (!current) {
+            continue;
+          }
+          groupsByChatId.set(
+            unresolvedGroup.chatId,
+            mergeHydratedGroupSnapshot(current, previousGroup)
+          );
+        }
+      }
+
+      let unresolvedAfterRestore = Array.from(groupsByChatId.values()).filter((group) =>
+        needsGroupDetailsEnrichment(group)
+      );
+      if (unresolvedAfterRestore.length > 0) {
+        const selfIdentifiers = await loadSelfIdentifiers();
+        let pendingRecoveryChatIds = unresolvedAfterRestore.map((group) => group.chatId);
+        let participantRecoveryUnavailable = false;
+
+        for (
+          let recoveryRound = 1;
+          recoveryRound <= INCOMPLETE_RECOVERY_MAX_ROUNDS && pendingRecoveryChatIds.length > 0;
+          recoveryRound += 1
+        ) {
+          await runWithConcurrency(pendingRecoveryChatIds, FIND_GROUP_INFOS_CONCURRENCY, async (chatId) => {
+            try {
+              const payload = await requestFindGroupInfos(chatId);
+              const detailEntries = extractGroupList(payload)
+                .map((dto) => ({
+                  dto,
+                  group: normalizeGroup(dto)
+                }))
+                .filter((entry) => entry.group.chatId.length > 0);
+              hydrateGroupFromEntries(chatId, detailEntries, selfIdentifiers);
+            } catch {
+              // Continue recovery loop for remaining groups.
+            }
+          });
+
+          if (!participantRecoveryUnavailable) {
+            try {
+              const detailsPayload = await fetchParticipantDetailsPayload();
+              const detailEntries = extractGroupList(detailsPayload)
+                .map((dto) => ({
+                  dto,
+                  group: normalizeGroup(dto)
+                }))
+                .filter((entry) => entry.group.chatId.length > 0);
+              for (const chatId of pendingRecoveryChatIds) {
+                hydrateGroupFromEntries(chatId, detailEntries, selfIdentifiers);
+              }
+            } catch {
+              participantRecoveryUnavailable = true;
+              diagnostics.push('recovery-round participant enrichment unavailable');
+            }
+          }
+
+          for (const chatId of pendingRecoveryChatIds) {
+            const previousGroup = previousGroupByChatId.get(chatId);
+            if (!previousGroup || !isGroupDetailsResolved(previousGroup)) {
+              continue;
+            }
+            const current = groupsByChatId.get(chatId);
+            if (!current) {
+              continue;
+            }
+            groupsByChatId.set(chatId, mergeHydratedGroupSnapshot(current, previousGroup));
+          }
+
+          unresolvedAfterRestore = Array.from(groupsByChatId.values()).filter((group) =>
+            needsGroupDetailsEnrichment(group)
+          );
+          pendingRecoveryChatIds = unresolvedAfterRestore.map((group) => group.chatId);
+          diagnostics.push(
+            `recovery-round=${recoveryRound} unresolved=${pendingRecoveryChatIds.length}`
+          );
+
+          if (pendingRecoveryChatIds.length > 0 && recoveryRound < INCOMPLETE_RECOVERY_MAX_ROUNDS) {
+            await new Promise((resolve) => {
+              setTimeout(resolve, INCOMPLETE_RECOVERY_DELAY_MS);
+            });
+          }
+        }
+      }
+
+      if (unresolvedAfterRestore.length > 0) {
+        const unresolvedNameChatIds = unresolvedAfterRestore
+          .filter((group) => !hasResolvedGroupName(group))
+          .map((group) => group.chatId)
+          .slice(0, FINAL_NAME_RECOVERY_MAX_GROUPS);
+        if (unresolvedNameChatIds.length > 0) {
+          const selfIdentifiers = await loadSelfIdentifiers();
+          await runWithConcurrency(unresolvedNameChatIds, 1, async (chatId) => {
+            try {
+              const payload = await requestFindGroupInfos(chatId, {
+                broadLookup: true,
+                bypassCache: true
+              });
+              const detailEntries = extractGroupList(payload)
+                .map((dto) => ({
+                  dto,
+                  group: normalizeGroup(dto)
+                }))
+                .filter((entry) => entry.group.chatId.length > 0);
+              hydrateGroupFromEntries(chatId, detailEntries, selfIdentifiers);
+            } catch {
+              // Keep unresolved and continue with next candidate.
+            }
+          });
+
+          unresolvedAfterRestore = Array.from(groupsByChatId.values()).filter((group) =>
+            needsGroupDetailsEnrichment(group)
+          );
+          diagnostics.push(
+            `final-name-recovery unresolved=${unresolvedAfterRestore.length}`
+          );
+        }
+      }
+
+      if (unresolvedAfterRestore.length > 0) {
+        const nameOnlyUnresolved = unresolvedAfterRestore.filter(
+          (group) => !hasResolvedGroupName(group) && group.membersCount > 0
+        );
+        if (nameOnlyUnresolved.length === unresolvedAfterRestore.length) {
+          for (const group of nameOnlyUnresolved) {
+            const current = groupsByChatId.get(group.chatId);
+            if (!current) {
+              continue;
+            }
+            const raw = asRecord(current.raw) ?? {};
+            groupsByChatId.set(group.chatId, {
+              ...current,
+              name: buildFallbackGroupName(group.chatId),
+              raw: {
+                ...raw,
+                __nameFallback: true
+              },
+              syncedAt: new Date().toISOString()
+            });
+          }
+          unresolvedAfterRestore = Array.from(groupsByChatId.values()).filter((group) =>
+            needsGroupDetailsEnrichment(group)
+          );
+          diagnostics.push(
+            `fallback-name-applied=${nameOnlyUnresolved.length}; unresolved=${unresolvedAfterRestore.length}`
+          );
+        }
+      }
+
+      if (unresolvedAfterRestore.length > 0) {
+        const unresolvedBreakdown = unresolvedAfterRestore.reduce(
+          (acc, group) => {
+            if (!hasResolvedGroupName(group)) {
+              acc.missingName += 1;
+            }
+            if (group.membersCount <= 0) {
+              acc.missingMembers += 1;
+            }
+            if (group.adminOnly && typeof resolveGroupPermissionHint(group) !== 'boolean') {
+              acc.missingPermission += 1;
+            }
+            return acc;
+          },
+          { missingName: 0, missingMembers: 0, missingPermission: 0 }
+        );
+        const unresolvedSample = unresolvedAfterRestore
           .slice(0, INCOMPLETE_GROUP_DETAILS_SAMPLE_SIZE)
           .map((group) => group.chatId)
           .join(', ');
         const unresolvedSuffix =
-          unresolvedGroups.length > INCOMPLETE_GROUP_DETAILS_SAMPLE_SIZE ? ', ...' : '';
+          unresolvedAfterRestore.length > INCOMPLETE_GROUP_DETAILS_SAMPLE_SIZE ? ', ...' : '';
         throw new AppError(
           'FETCH_GROUPS_INCOMPLETE',
-          `Không thể hoàn tất metadata cho toàn bộ nhóm. Đã hoàn tất ${groupsByChatId.size - unresolvedGroups.length}/${groupsByChatId.size} nhóm. Còn thiếu: ${unresolvedSample}${unresolvedSuffix}.`
+          `Không thể hoàn tất metadata cho toàn bộ nhóm. Đã hoàn tất ${groupsByChatId.size - unresolvedAfterRestore.length}/${groupsByChatId.size} nhóm. Còn thiếu: ${unresolvedSample}${unresolvedSuffix}.`,
+          undefined,
+          {
+            unresolvedCount: unresolvedAfterRestore.length,
+            unresolvedBreakdown,
+            diagnostics: diagnostics.slice(-8)
+          }
         );
       }
 
