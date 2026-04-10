@@ -367,6 +367,33 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
     hasSearchFilter || hasMinMembersFilter || hasStatusFilter || hasPermissionFilter;
   const hasGroups = groups.length > 0;
   const visibleSummary = `${filtered.length}/${groups.length}`;
+  const activeCampaignDisplay = useMemo(() => {
+    if (!activeCampaign) {
+      return {
+        label: 'chưa có',
+        title: 'Trạng thái theo chiến dịch: chưa có'
+      };
+    }
+
+    const campaignName = activeCampaign.name?.trim() ?? '';
+    const campaignId = activeCampaign.id?.trim() ?? '';
+    const preferredLabel = campaignName || campaignId;
+    if (!preferredLabel) {
+      return {
+        label: 'chưa có',
+        title: 'Trạng thái theo chiến dịch: chưa có'
+      };
+    }
+
+    const compactLabel =
+      !campaignName && preferredLabel.length > 26
+        ? `${preferredLabel.slice(0, 12)}...${preferredLabel.slice(-8)}`
+        : preferredLabel;
+    return {
+      label: compactLabel,
+      title: `Trạng thái theo chiến dịch: ${preferredLabel}`
+    };
+  }, [activeCampaign]);
   const activeRunningChatId = useMemo(() => {
     if (!running) {
       return null;
@@ -650,14 +677,14 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
     clearCacheMutation.isPending ||
     (isConnectionBlocked && !canTriggerConnectionCta);
   const syncButtonTitle = isSyncLoading
-    ? 'Đang tải danh sách nhóm từ Evo API'
+    ? 'Đang đồng bộ danh sách nhóm từ Evo API'
     : isConnectionBlocked
       ? canTriggerConnectionCta
         ? 'Mở cài đặt kết nối'
         : connectionRequiredMessage
       : syncDisabledReason ?? 'Tải danh sách nhóm từ Evo API';
   const syncButtonLabel = isSyncLoading
-    ? 'Đang tải...'
+    ? 'Đang đồng bộ...'
     : isConnectionBlocked
       ? 'Mở cài đặt kết nối'
       : 'Tải danh sách nhóm';
@@ -668,8 +695,12 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
     }
     onSyncGroups();
   };
-  const groupCountLabel = `${groups.length} nhóm`;
   const showGroupCountSyncHint = syncMutation.isPending;
+  const groupCountLabel = showGroupCountSyncHint
+    ? groups.length > 0
+      ? `Đang đồng bộ • ${groups.length} nhóm`
+      : 'Đang đồng bộ...'
+    : `${groups.length} nhóm`;
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -750,7 +781,9 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
           <div className="flex items-center gap-2">
             <Badge
               variant="outline"
-              className="h-6 items-center justify-center gap-1 rounded-full px-2 py-0 text-xs leading-none"
+              className={`h-6 items-center justify-center gap-1 rounded-full px-2 py-0 text-xs leading-none ${
+                showGroupCountSyncHint ? 'border-primary/40 text-primary' : ''
+              }`}
             >
               {showGroupCountSyncHint ? <RefreshCw className="h-3 w-3 animate-spin text-primary/90" /> : null}
               {groupCountLabel}
@@ -796,14 +829,10 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
               <Badge
                 variant="outline"
                 className="h-6 max-w-[300px] items-center justify-start rounded-full px-2 text-xs"
-                title={
-                  activeCampaign
-                    ? `Trạng thái theo chiến dịch: ${activeCampaign.name || activeCampaign.id}`
-                    : 'Trạng thái theo chiến dịch: chưa có'
-                }
+                title={activeCampaignDisplay.title}
               >
                 <span className="truncate">
-                  Theo chiến dịch: {activeCampaign ? activeCampaign.name || activeCampaign.id : 'chưa có'}
+                  Theo chiến dịch: {activeCampaignDisplay.label}
                 </span>
               </Badge>
             </div>
@@ -1257,7 +1286,7 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
                 </p>
                 <p className="mt-1 text-sm text-muted-foreground">
                   {syncMutation.isPending
-                    ? 'Đang tải danh sách nhóm và chuẩn hóa metadata (tên nhóm, thành viên, quyền gửi). Bảng sẽ hiển thị ngay khi hoàn tất.'
+                    ? 'Đang lấy danh sách nhóm và hoàn tất metadata bắt buộc. Bảng sẽ hiển thị khi dữ liệu sẵn sàng.'
                     : 'Dùng nút "Tải danh sách nhóm" ở phần điều khiển phía trên để đồng bộ dữ liệu từ Evo API trước khi lọc và chọn nhóm gửi.'}
                 </p>
               </div>
