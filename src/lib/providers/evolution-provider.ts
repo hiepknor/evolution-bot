@@ -36,10 +36,12 @@ const GENERIC_MISSING_GROUP_RETENTION_WINDOW_MS = 24 * 60 * 60 * 1000;
 const REFERENCE_FALLBACK_GROUP_LIMIT = 600;
 const GROUP_JID_PATTERN = /([0-9a-z._:-]+@g\.us)\b/gi;
 const FIND_GROUP_INFOS_TIMEOUT_MS = 12_000;
-const FIND_GROUP_INFOS_CONCURRENCY = 8;
+const FIND_GROUP_INFOS_CONCURRENCY = 5;
 const FIND_GROUP_INFOS_CACHE_TTL_MS = 5 * 60 * 1000;
-const FIND_GROUP_INFOS_MAX_ATTEMPTS = 1;
+const FIND_GROUP_INFOS_MAX_ATTEMPTS = 2;
+const FIND_GROUP_INFOS_RETRY_DELAY_MS = 220;
 const FIND_GROUP_INFOS_QUERY_KEYS = ['groupJid', 'jid', 'group', 'chatId', 'id'] as const;
+const INCOMPLETE_GROUP_DETAILS_SAMPLE_SIZE = 6;
 
 const findGroupInfosCache = new Map<string, { payload: unknown; expiresAt: number }>();
 const findGroupInfosInflight = new Map<string, Promise<unknown>>();
@@ -158,6 +160,18 @@ const normalizeGroupJidForLookup = (value: string): string => {
     return `${normalized}@g.us`;
   }
   return normalized;
+};
+
+const buildGroupLookupCandidates = (groupJid: string): string[] => {
+  const normalized = normalizeGroupJidForLookup(groupJid);
+  if (!normalized) {
+    return [];
+  }
+  const localPart = normalized.split('@')[0]?.trim() ?? '';
+  if (!localPart) {
+    return [normalized];
+  }
+  return Array.from(new Set([normalized, localPart]));
 };
 
 const normalizeText = (value: unknown): string => {
@@ -749,6 +763,13 @@ const mergeGroupSnapshots = (current: Group, incoming: Group, preferIncomingOnNa
     incomingNameScore > currentNameScore ||
     (preferIncomingOnNameTie && incomingNameScore === currentNameScore);
   const selectedName = shouldUseIncomingName ? incomingName : currentName;
+  const currentHasSubject = extractGroupSubject(current).length > 0;
+  const incomingHasSubject = extractGroupSubject(incoming).length > 0;
+  const currentPermissionHint = resolveGroupPermissionHint(current);
+  const incomingPermissionHint = resolveGroupPermissionHint(incoming);
+  const shouldKeepCurrentRaw =
+    (currentHasSubject && !incomingHasSubject) ||
+    (typeof currentPermissionHint === 'boolean' && typeof incomingPermissionHint !== 'boolean');
 
   return {
     ...current,
@@ -756,7 +777,7 @@ const mergeGroupSnapshots = (current: Group, incoming: Group, preferIncomingOnNa
     membersCount: Math.max(current.membersCount, incoming.membersCount),
     sendable: current.sendable && incoming.sendable,
     adminOnly: current.adminOnly || incoming.adminOnly,
-    raw: incoming.raw,
+    raw: shouldKeepCurrentRaw ? current.raw : incoming.raw,
     syncedAt: incoming.syncedAt
   };
 };
@@ -1117,6 +1138,10 @@ export class EvolutionProvider implements MessagingProvider {
       if (!normalizedGroupJid) {
         throw new AppError('INVALID_GROUP_ID', 'Group JID is required');
       }
+      const lookupCandidates = buildGroupLookupCandidates(normalizedGroupJid);
+      if (lookupCandidates.length === 0) {
+        throw new AppError('INVALID_GROUP_ID', 'Group JID is required');
+      }
 
       const cacheKey = buildFindGroupInfosCacheKey(normalizedGroupJid);
       const now = Date.now();
@@ -1135,25 +1160,30 @@ export class EvolutionProvider implements MessagingProvider {
 
       const requestPromise = (async () => {
         let lastError: unknown;
-        for (const queryKey of FIND_GROUP_INFOS_QUERY_KEYS) {
-          try {
-            const payload = await this.client.request<unknown>({
-              path: `/group/findGroupInfos/${encodedInstanceName}?${queryKey}=${encodeURIComponent(normalizedGroupJid)}`,
-              timeoutMs: FIND_GROUP_INFOS_TIMEOUT_MS
-            });
-            findGroupInfosCache.set(cacheKey, {
-              payload,
-              expiresAt: Date.now() + FIND_GROUP_INFOS_CACHE_TTL_MS
-            });
-            return payload;
-          } catch (error) {
-            lastError = error;
-            if (error instanceof AppError) {
-              if (error.status === 404 || error.status === 401 || error.status === 403) {
-                break;
-              }
-              if (error.status === 400) {
-                continue;
+        for (const lookupValue of lookupCandidates) {
+          for (const queryKey of FIND_GROUP_INFOS_QUERY_KEYS) {
+            try {
+              const payload = await this.client.request<unknown>({
+                path: `/group/findGroupInfos/${encodedInstanceName}?${queryKey}=${encodeURIComponent(lookupValue)}`,
+                timeoutMs: FIND_GROUP_INFOS_TIMEOUT_MS
+              });
+              findGroupInfosCache.set(cacheKey, {
+                payload,
+                expiresAt: Date.now() + FIND_GROUP_INFOS_CACHE_TTL_MS
+              });
+              return payload;
+            } catch (error) {
+              lastError = error;
+              if (error instanceof AppError) {
+                if (error.status === 401 || error.status === 403) {
+                  throw error;
+                }
+                if (error.status === 404) {
+                  break;
+                }
+                if (error.status === 400) {
+                  continue;
+                }
               }
             }
           }
@@ -1436,7 +1466,7 @@ export class EvolutionProvider implements MessagingProvider {
                 }
               }
             } catch (error) {
-              if (error instanceof AppError && (error.status === 401 || error.status === 403 || error.status === 404)) {
+              if (error instanceof AppError && (error.status === 401 || error.status === 403)) {
                 shouldSkipFindGroupInfos = true;
               }
               errorCount += 1;
@@ -1453,7 +1483,7 @@ export class EvolutionProvider implements MessagingProvider {
 
           if (pendingChatIds.size > 0 && attempt < FIND_GROUP_INFOS_MAX_ATTEMPTS && !shouldSkipFindGroupInfos) {
             await new Promise((resolve) => {
-              setTimeout(resolve, 180);
+              setTimeout(resolve, FIND_GROUP_INFOS_RETRY_DELAY_MS);
             });
           }
         }
@@ -1463,6 +1493,67 @@ export class EvolutionProvider implements MessagingProvider {
         }
         if (pendingChatIds.size > 0) {
           diagnostics.push(`findGroupInfos unresolved=${pendingChatIds.size}/${chatIdsNeedingDetails.length}`);
+        }
+      }
+
+      for (const group of groupsByChatId.values()) {
+        if (!group.adminOnly) {
+          continue;
+        }
+        const currentHint = resolveGroupPermissionHint(group);
+        if (typeof currentHint === 'boolean') {
+          continue;
+        }
+        const reusableHint = reusablePermissionByChatId.get(group.chatId);
+        if (typeof reusableHint !== 'boolean') {
+          continue;
+        }
+        groupsByChatId.set(group.chatId, applyAdminPermissionHint(group, reusableHint));
+      }
+
+      let participantDetailsPayload: unknown | null = null;
+      const fetchParticipantDetailsPayload = async (): Promise<unknown> => {
+        if (participantDetailsPayload !== null) {
+          return participantDetailsPayload;
+        }
+        participantDetailsPayload = await this.client.request<unknown>({
+          path: `/group/fetchAllGroups/${encodedInstanceName}?getParticipants=true`,
+          timeoutMs: ADMIN_PERMISSION_DEEP_CHECK_TIMEOUT_MS
+        });
+        return participantDetailsPayload;
+      };
+
+      const unresolvedAfterFindInfos = Array.from(groupsByChatId.values()).filter((group) =>
+        needsGroupDetailsEnrichment(group)
+      );
+      if (unresolvedAfterFindInfos.length > 0) {
+        try {
+          const detailsPayload = await fetchParticipantDetailsPayload();
+          const detailedGroups = extractGroupList(detailsPayload)
+            .map((dto) => normalizeGroup(dto))
+            .filter((group) => group.chatId.length > 0);
+
+          for (const unresolvedGroup of unresolvedAfterFindInfos) {
+            const current = groupsByChatId.get(unresolvedGroup.chatId);
+            if (!current) {
+              continue;
+            }
+            const candidate = pickFindGroupInfosCandidate(unresolvedGroup.chatId, detailedGroups);
+            if (!candidate) {
+              continue;
+            }
+            const hydratedForTarget =
+              candidate.chatId === unresolvedGroup.chatId
+                ? candidate
+                : {
+                    ...candidate,
+                    id: unresolvedGroup.chatId,
+                    chatId: unresolvedGroup.chatId
+                  };
+            groupsByChatId.set(unresolvedGroup.chatId, mergeHydratedGroupSnapshot(current, hydratedForTarget));
+          }
+        } catch {
+          diagnostics.push('fetchAllGroups getParticipants=true enrichment skipped');
         }
       }
 
@@ -1490,10 +1581,7 @@ export class EvolutionProvider implements MessagingProvider {
               path: '/instance/fetchInstances',
               timeoutMs: INSTANCE_LOOKUP_TIMEOUT_MS
             }),
-            this.client.request<unknown>({
-              path: `/group/fetchAllGroups/${encodedInstanceName}?getParticipants=true`,
-              timeoutMs: ADMIN_PERMISSION_DEEP_CHECK_TIMEOUT_MS
-            })
+            fetchParticipantDetailsPayload()
           ]);
 
           if (Array.isArray(instancesData)) {
@@ -1525,6 +1613,22 @@ export class EvolutionProvider implements MessagingProvider {
         } catch {
           // Best-effort enrichment: keep fallback "Chỉ admin (cần kiểm tra)" if participant-level check fails.
         }
+      }
+
+      const unresolvedGroups = Array.from(groupsByChatId.values()).filter((group) =>
+        needsGroupDetailsEnrichment(group)
+      );
+      if (unresolvedGroups.length > 0) {
+        const unresolvedSample = unresolvedGroups
+          .slice(0, INCOMPLETE_GROUP_DETAILS_SAMPLE_SIZE)
+          .map((group) => group.chatId)
+          .join(', ');
+        const unresolvedSuffix =
+          unresolvedGroups.length > INCOMPLETE_GROUP_DETAILS_SAMPLE_SIZE ? ', ...' : '';
+        throw new AppError(
+          'FETCH_GROUPS_INCOMPLETE',
+          `Không thể hoàn tất metadata cho toàn bộ nhóm. Đã hoàn tất ${groupsByChatId.size - unresolvedGroups.length}/${groupsByChatId.size} nhóm. Còn thiếu: ${unresolvedSample}${unresolvedSuffix}.`
+        );
       }
 
       return Array.from(groupsByChatId.values()).sort((a, b) =>

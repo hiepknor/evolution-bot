@@ -427,12 +427,6 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
   };
 
   const syncMutation = useMutation({
-    onMutate: () => {
-      pushUiLog({
-        level: 'info',
-        message: 'Đang tải danh sách nhóm đầy đủ từ Evo API (có thể mất 2-5 phút với tài khoản nhiều nhóm).'
-      });
-    },
     mutationFn: async () => {
       let currentSettings = settings;
       if (!currentSettings) {
@@ -451,14 +445,42 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
         throw new Error('Thiếu Base URL / API Key / Instance Name');
       }
 
-      if (currentSettings.providerMode !== 'mock' && badgeState !== 'connected') {
-        throw new Error('Chưa kết nối instance. Vui lòng mở cài đặt kết nối (icon bánh răng) và bấm "Kết nối" trước.');
-      }
-
       const provider = createProvider({
         mode: currentSettings.providerMode,
         baseUrl: currentSettings.baseUrl,
         apiKey: currentSettings.apiKey
+      });
+
+      if (currentSettings.providerMode !== 'mock') {
+        let connectionStateMessage = '';
+        try {
+          const connectionState = await provider.getConnectionState(currentSettings.instanceName);
+          connectionStateMessage = connectionState.state;
+          if (!connectionState.isConnected) {
+            throw new AppError(
+              'INSTANCE_NOT_CONNECTED',
+              `Instance "${currentSettings.instanceName}" chưa kết nối (state: ${connectionState.state}). Vui lòng mở cài đặt kết nối (icon bánh răng) và bấm "Kết nối".`
+            );
+          }
+        } catch (error) {
+          if (error instanceof AppError && error.code === 'INSTANCE_NOT_CONNECTED') {
+            throw error;
+          }
+          if (error instanceof AppError && (error.code === 'HTTP_ERROR' || error.code === 'REQUEST_FAILED')) {
+            throw new AppError(
+              'INSTANCE_CONNECTION_CHECK_FAILED',
+              `Không kiểm tra được trạng thái kết nối instance "${currentSettings.instanceName}"${connectionStateMessage ? ` (state: ${connectionStateMessage})` : ''}. Vui lòng kiểm tra Evolution API và thử lại.`,
+              error.status,
+              error.details
+            );
+          }
+          throw error;
+        }
+      }
+
+      pushUiLog({
+        level: 'info',
+        message: 'Đang tải danh sách nhóm đầy đủ từ Evo API (có thể mất 2-5 phút với tài khoản nhiều nhóm).'
       });
 
       const groupsStoreState = useGroupsStore.getState();
@@ -531,17 +553,26 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
       }
     },
     onError: (error) => {
-      const message = error instanceof AppError
-        ? error.code === 'FETCH_GROUPS_RATE_LIMITED'
-          ? `${error.message} Hệ thống giữ nguyên danh sách nhóm cache hiện tại để tránh mất dữ liệu.`
-          : error.code === 'FETCH_GROUPS_DISABLED_BY_SETTINGS'
-            ? `${error.message} Mở Evolution API > Settings của instance và đặt groups_ignore=false.`
-          : `${error.message}${error.status ? ` (HTTP ${error.status})` : ''}`
-        : error instanceof Error
-          ? error.message
-          : typeof error === 'string'
-            ? error
-            : `Tải danh sách nhóm thất bại: ${JSON.stringify(error)}`;
+      let message: string;
+      if (error instanceof AppError) {
+        if (error.code === 'FETCH_GROUPS_RATE_LIMITED') {
+          message = `${error.message} Hệ thống giữ nguyên danh sách nhóm cache hiện tại để tránh mất dữ liệu.`;
+        } else if (error.code === 'FETCH_GROUPS_INCOMPLETE') {
+          message = `${error.message} Chưa cập nhật bảng để tránh hiển thị dữ liệu thiếu. Vui lòng thử lại sau 10-20 giây.`;
+        } else if (error.code === 'INSTANCE_NOT_CONNECTED' || error.code === 'INSTANCE_CONNECTION_CHECK_FAILED') {
+          message = error.message;
+        } else if (error.code === 'FETCH_GROUPS_DISABLED_BY_SETTINGS') {
+          message = `${error.message} Mở Evolution API > Settings của instance và đặt groups_ignore=false.`;
+        } else {
+          message = `${error.message}${error.status ? ` (HTTP ${error.status})` : ''}`;
+        }
+      } else if (error instanceof Error) {
+        message = error.message;
+      } else if (typeof error === 'string') {
+        message = error;
+      } else {
+        message = `Tải danh sách nhóm thất bại: ${JSON.stringify(error)}`;
+      }
       pushUiLog({
         level: 'error',
         message
@@ -578,6 +609,10 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
   });
 
   const syncDisabledReason = useMemo(() => {
+    if (syncMutation.isPending) {
+      // Keep loading state clean and avoid mixed signals with connection warnings while syncing.
+      return null;
+    }
     if (clearCacheMutation.isPending) {
       return 'Đang xóa cache nhóm. Vui lòng chờ hoàn tất.';
     }
@@ -592,7 +627,8 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
     badgeState,
     clearCacheMutation.isPending,
     groupsIgnoreFlag,
-    settings?.providerMode
+    settings?.providerMode,
+    syncMutation.isPending
   ]);
 
   const onSyncGroups = () => {
@@ -606,21 +642,22 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
     clearCacheMutation.mutate();
   };
 
-  const isConnectionBlocked = syncDisabledReason === connectionRequiredMessage;
+  const isSyncLoading = syncMutation.isPending;
+  const isConnectionBlocked = !isSyncLoading && syncDisabledReason === connectionRequiredMessage;
   const canTriggerConnectionCta = isConnectionBlocked && Boolean(onOpenConnectionSettings);
   const syncButtonDisabled =
-    syncMutation.isPending ||
+    isSyncLoading ||
     clearCacheMutation.isPending ||
     (isConnectionBlocked && !canTriggerConnectionCta);
-  const syncButtonTitle = isConnectionBlocked
-    ? canTriggerConnectionCta
-      ? 'Mở cài đặt kết nối'
-      : connectionRequiredMessage
-    : syncMutation.isPending
-      ? 'Đang tải danh sách nhóm từ Evo API'
+  const syncButtonTitle = isSyncLoading
+    ? 'Đang tải danh sách nhóm từ Evo API'
+    : isConnectionBlocked
+      ? canTriggerConnectionCta
+        ? 'Mở cài đặt kết nối'
+        : connectionRequiredMessage
       : syncDisabledReason ?? 'Tải danh sách nhóm từ Evo API';
-  const syncButtonLabel = syncMutation.isPending
-    ? 'Đang tải danh sách...'
+  const syncButtonLabel = isSyncLoading
+    ? 'Đang tải...'
     : isConnectionBlocked
       ? 'Mở cài đặt kết nối'
       : 'Tải danh sách nhóm';
@@ -631,7 +668,8 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
     }
     onSyncGroups();
   };
-  const groupCountLabel = syncMutation.isPending && groups.length === 0 ? 'Đang tải...' : `${groups.length} nhóm`;
+  const groupCountLabel = `${groups.length} nhóm`;
+  const showGroupCountSyncHint = syncMutation.isPending;
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -712,8 +750,9 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
           <div className="flex items-center gap-2">
             <Badge
               variant="outline"
-              className="h-6 items-center justify-center rounded-full px-2 py-0 text-xs leading-none"
+              className="h-6 items-center justify-center gap-1 rounded-full px-2 py-0 text-xs leading-none"
             >
+              {showGroupCountSyncHint ? <RefreshCw className="h-3 w-3 animate-spin text-primary/90" /> : null}
               {groupCountLabel}
             </Badge>
             <Badge
@@ -780,7 +819,7 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
                 disabled={syncButtonDisabled}
                 title={syncButtonTitle}
               >
-                <RefreshCw className={`mr-2 h-4 w-4 ${syncMutation.isPending ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`mr-2 h-4 w-4 ${isSyncLoading ? 'animate-spin' : ''}`} />
                 {syncButtonLabel}
               </Button>
               {hasGroups ? (
@@ -1207,11 +1246,19 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
             <div className="flex h-full min-h-[420px] items-center justify-center p-4">
               <div className="w-full max-w-xl rounded-md border border-dashed border-border/60 bg-muted/10 p-6 text-center">
                 <div className="mx-auto mb-3 inline-flex h-10 w-10 items-center justify-center rounded-full bg-muted/40 text-muted-foreground">
-                  <Users className="h-5 w-5" />
+                  {syncMutation.isPending ? (
+                    <RefreshCw className="h-5 w-5 animate-spin text-primary" />
+                  ) : (
+                    <Users className="h-5 w-5" />
+                  )}
                 </div>
-                <p className="text-base font-semibold text-foreground">Chưa có dữ liệu nhóm</p>
+                <p className="text-base font-semibold text-foreground">
+                  {syncMutation.isPending ? 'Đang đồng bộ danh sách nhóm' : 'Chưa có dữ liệu nhóm'}
+                </p>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Dùng nút &quot;Tải danh sách nhóm&quot; ở phần điều khiển phía trên để đồng bộ dữ liệu từ Evo API trước khi lọc và chọn nhóm gửi.
+                  {syncMutation.isPending
+                    ? 'Đang tải danh sách nhóm và chuẩn hóa metadata (tên nhóm, thành viên, quyền gửi). Bảng sẽ hiển thị ngay khi hoàn tất.'
+                    : 'Dùng nút "Tải danh sách nhóm" ở phần điều khiển phía trên để đồng bộ dữ liệu từ Evo API trước khi lọc và chọn nhóm gửi.'}
                 </p>
               </div>
             </div>

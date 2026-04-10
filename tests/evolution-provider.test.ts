@@ -13,7 +13,7 @@ describe('evolution provider', () => {
       ok: true,
       text: async () => JSON.stringify([
         { jid: '123@g.us', subject: 'Group 1', size: 33 },
-        { id: '456@g.us', name: 'Group 2', participants: [{}, {}] }
+        { id: '456@g.us', subject: 'Group 2', participants: [{}, {}] }
       ])
     } as Response);
 
@@ -73,8 +73,8 @@ describe('evolution provider', () => {
           ok: true,
           text: async () =>
             JSON.stringify([
-              { jid: '111@g.us', subject: 'Group One', size: 10, announce: true },
-              { id: '222@g.us', archived: true }
+              { jid: '111@g.us', subject: 'Group One', size: 10, announce: true, canSend: false },
+              { id: '222@g.us', subject: 'Group Two', size: 22, archived: true }
             ])
         } as Response;
       }
@@ -110,7 +110,7 @@ describe('evolution provider', () => {
         membersCount: 17,
         sendable: true,
         adminOnly: false,
-        raw: { archived: true, parentGroupJid: '900@g.us' },
+        raw: { archived: true, parentGroupJid: '900@g.us', subject: 'Community Hidden' },
         syncedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString()
       }
     ];
@@ -150,7 +150,7 @@ describe('evolution provider', () => {
         membersCount: 30,
         sendable: true,
         adminOnly: false,
-        raw: {},
+        raw: { subject: 'Recent Regular Group' },
         syncedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
       }
     ];
@@ -194,7 +194,7 @@ describe('evolution provider', () => {
         membersCount: 15,
         sendable: true,
         adminOnly: false,
-        raw: {},
+        raw: { subject: 'Old Cached Group' },
         syncedAt: new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString()
       }
     ];
@@ -269,15 +269,18 @@ describe('evolution provider', () => {
               { jid: '401@g.us', subject: 'Regular Group', size: 21 },
               {
                 id: '402@g.us',
-                name: 'Community Announcements',
+                subject: 'Community Announcements',
                 announce: true,
-                isCommunityAnnouncement: true
+                isCommunityAnnouncement: true,
+                canSend: false,
+                size: 120
               },
               {
                 id: '403@g.us',
-                name: 'Community Subgroup',
+                subject: 'Community Subgroup',
                 parentGroupJid: '402@g.us',
-                isSubgroup: true
+                isSubgroup: true,
+                size: 65
               }
             ])
         } as Response;
@@ -309,7 +312,7 @@ describe('evolution provider', () => {
           ok: true,
           text: async () =>
             JSON.stringify([
-              { remoteJid: '450@g.us', pushName: 'Hidden Community Subgroup', isGroup: true },
+              { remoteJid: '450@g.us', subject: 'Hidden Community Subgroup', isGroup: true, size: 55 },
               { remoteJid: '84991234567@s.whatsapp.net', pushName: 'Regular Contact' }
             ])
         } as Response;
@@ -343,10 +346,26 @@ describe('evolution provider', () => {
               {
                 id: '500@g.us',
                 subject: 'Main Community',
+                size: 98,
                 linkedGroups: ['501@g.us', '502@g.us']
               }
             ])
         } as Response;
+      }
+
+      if (url.includes('/group/findGroupInfos/instance-a?') && method === 'GET') {
+        if (url.includes('501%40g.us')) {
+          return {
+            ok: true,
+            text: async () => JSON.stringify({ id: '501@g.us', subject: 'Subgroup 501', size: 25 })
+          } as Response;
+        }
+        if (url.includes('502%40g.us')) {
+          return {
+            ok: true,
+            text: async () => JSON.stringify({ id: '502@g.us', subject: 'Subgroup 502', size: 27 })
+          } as Response;
+        }
       }
 
       return {
@@ -377,10 +396,32 @@ describe('evolution provider', () => {
               {
                 id: '610@g.us',
                 subject: 'Community Root',
+                size: 140,
                 linkedGroupsText: 'children: 611@g.us, 612@g.us; legacy=613@g.us'
               }
             ])
         } as Response;
+      }
+
+      if (url.includes('/group/findGroupInfos/instance-a?') && method === 'GET') {
+        if (url.includes('611%40g.us')) {
+          return {
+            ok: true,
+            text: async () => JSON.stringify({ id: '611@g.us', subject: 'Child 611', size: 33 })
+          } as Response;
+        }
+        if (url.includes('612%40g.us')) {
+          return {
+            ok: true,
+            text: async () => JSON.stringify({ id: '612@g.us', subject: 'Child 612', size: 35 })
+          } as Response;
+        }
+        if (url.includes('613%40g.us')) {
+          return {
+            ok: true,
+            text: async () => JSON.stringify({ id: '613@g.us', subject: 'Child 613', size: 37 })
+          } as Response;
+        }
       }
 
       return {
@@ -506,7 +547,7 @@ describe('evolution provider', () => {
     expect(groups.find((item) => item.chatId === '801@g.us')?.name).toBe('Group 801');
   });
 
-  it('does not fail full group list when one findGroupInfos request fails', async () => {
+  it('fails sync when one group cannot be fully enriched by findGroupInfos', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
       const url = String(input);
       const method = String(init?.method ?? 'GET').toUpperCase();
@@ -545,10 +586,9 @@ describe('evolution provider', () => {
     });
 
     const provider = new EvolutionProvider({ baseUrl: 'http://localhost:8080', apiKey: 'x' });
-    const groups = await provider.fetchGroups('instance-a');
-
-    expect(groups.some((item) => item.chatId === '810@g.us')).toBe(true);
-    expect(groups.find((item) => item.chatId === '811@g.us')?.name).toBe('Recovered 811');
+    await expect(provider.fetchGroups('instance-a')).rejects.toMatchObject({
+      code: 'FETCH_GROUPS_INCOMPLETE'
+    });
   });
 
   it('dedupes findGroupInfos requests for the same group chat id in one sync batch', async () => {
@@ -691,7 +731,7 @@ describe('evolution provider', () => {
         membersCount: 23,
         sendable: true,
         adminOnly: false,
-        raw: { archived: true, hidden: true },
+        raw: { archived: true, hidden: true, subject: 'Old Hidden Group' },
         syncedAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString()
       }
     ];
@@ -711,6 +751,7 @@ describe('evolution provider', () => {
           data: {
             groups: {
               first: {
+                subject: 'Map Group 1',
                 name: 'Map Group 1',
                 id: { _serialized: '333@g.us' },
                 participants: [{}, {}, {}]
@@ -767,6 +808,7 @@ describe('evolution provider', () => {
             {
               name: 'Nested Id Group',
               id: { id: '777@g.us' },
+              subject: 'Nested Id Group',
               size: 9
             }
           ]
@@ -793,7 +835,9 @@ describe('evolution provider', () => {
               {
                 id: 'chat-plain-id',
                 key: { remoteJid: '888@g.us' },
-                name: 'Group via key.remoteJid'
+                subject: 'Group via key.remoteJid',
+                participants: [{}, {}, {}],
+                size: 18
               }
             ])
         } as Response;
@@ -821,7 +865,7 @@ describe('evolution provider', () => {
         return {
           ok: true,
           text: async () =>
-            JSON.stringify([{ jid: '999@g.us', name: '999', subject: 'Rolex Dealers VN' }])
+            JSON.stringify([{ jid: '999@g.us', name: '999', subject: 'Rolex Dealers VN', size: 64 }])
         } as Response;
       }
 
@@ -846,7 +890,7 @@ describe('evolution provider', () => {
           {
             id: '1203123123@g.us',
             name: '1203123123',
-            metadata: { subject: 'AP PP ROLEX' }
+            metadata: { subject: 'AP PP ROLEX', participants: [{}, {}, {}] }
           }
         ])
     } as Response);
@@ -863,9 +907,9 @@ describe('evolution provider', () => {
       ok: true,
       text: async () =>
         JSON.stringify([
-          { jid: '101@g.us', participantsCount: '123' },
-          { jid: '102@g.us', metadata: { participantCount: '45' } },
-          { jid: '103@g.us', participants: { '0': {}, '1': {}, '2': {} } }
+          { jid: '101@g.us', subject: 'Group 101', participantsCount: '123' },
+          { jid: '102@g.us', subject: 'Group 102', metadata: { participantCount: '45' } },
+          { jid: '103@g.us', subject: 'Group 103', participants: { '0': {}, '1': {}, '2': {} } }
         ])
     } as Response);
 
@@ -882,10 +926,10 @@ describe('evolution provider', () => {
       ok: true,
       text: async () =>
         JSON.stringify([
-          { jid: '201@g.us', announce: 'false' },
-          { jid: '202@g.us', metadata: { announce: 'true' } },
-          { jid: '203@g.us', onlyAdminsCanSend: 0 },
-          { jid: '204@g.us', metadata: { onlyAdminCanSend: 1 } }
+          { jid: '201@g.us', subject: 'Group 201', size: 20, announce: 'false' },
+          { jid: '202@g.us', subject: 'Group 202', size: 20, metadata: { announce: 'true', canSend: false } },
+          { jid: '203@g.us', subject: 'Group 203', size: 20, onlyAdminsCanSend: 0 },
+          { jid: '204@g.us', subject: 'Group 204', size: 20, metadata: { onlyAdminCanSend: 1, canSend: false } }
         ])
     } as Response);
 
