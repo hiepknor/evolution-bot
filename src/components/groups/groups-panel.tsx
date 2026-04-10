@@ -366,7 +366,7 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
   const hasAnyFilter =
     hasSearchFilter || hasMinMembersFilter || hasStatusFilter || hasPermissionFilter;
   const hasGroups = groups.length > 0;
-  const visibleSummary = hasAnyFilter ? `${filtered.length}/${groups.length}` : `${filtered.length}`;
+  const visibleSummary = `${filtered.length}/${groups.length}`;
   const activeRunningChatId = useMemo(() => {
     if (!running) {
       return null;
@@ -578,9 +578,6 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
   });
 
   const syncDisabledReason = useMemo(() => {
-    if (syncMutation.isPending) {
-      return 'Đang đồng bộ danh sách nhóm.';
-    }
     if (clearCacheMutation.isPending) {
       return 'Đang xóa cache nhóm. Vui lòng chờ hoàn tất.';
     }
@@ -595,8 +592,7 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
     badgeState,
     clearCacheMutation.isPending,
     groupsIgnoreFlag,
-    settings?.providerMode,
-    syncMutation.isPending
+    settings?.providerMode
   ]);
 
   const onSyncGroups = () => {
@@ -620,7 +616,9 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
     ? canTriggerConnectionCta
       ? 'Mở cài đặt kết nối'
       : connectionRequiredMessage
-    : syncDisabledReason ?? 'Tải danh sách nhóm từ Evo API';
+    : syncMutation.isPending
+      ? 'Đang tải danh sách nhóm từ Evo API'
+      : syncDisabledReason ?? 'Tải danh sách nhóm từ Evo API';
   const syncButtonLabel = syncMutation.isPending
     ? 'Đang tải danh sách...'
     : isConnectionBlocked
@@ -633,6 +631,7 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
     }
     onSyncGroups();
   };
+  const groupCountLabel = syncMutation.isPending && groups.length === 0 ? 'Đang tải...' : `${groups.length} nhóm`;
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -715,7 +714,7 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
               variant="outline"
               className="h-6 items-center justify-center rounded-full px-2 py-0 text-xs leading-none"
             >
-              {groups.length} nhóm
+              {groupCountLabel}
             </Badge>
             <Badge
               variant="secondary"
@@ -733,12 +732,10 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
         <div className={panelTokens.section}>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex flex-wrap items-center justify-start gap-1.5">
-              {hasGroups || hasAnyFilter ? (
-                <Badge variant="outline" className="h-6 gap-1 rounded-full px-2">
-                  <Users className="h-3 w-3" />
-                  Hiển thị: {visibleSummary}
-                </Badge>
-              ) : null}
+              <Badge variant="outline" className="h-6 gap-1 rounded-full px-2">
+                <Users className="h-3 w-3" />
+                Hiển thị: {visibleSummary}
+              </Badge>
               <Badge
                 variant={campaignConfig.whitelistMode ? 'warning' : 'secondary'}
                 className="h-6 max-w-[260px] items-center justify-start rounded-full px-2 text-xs"

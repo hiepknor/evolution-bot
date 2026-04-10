@@ -13,9 +13,9 @@ interface ActivityLogFloatingModalProps {
 
 export function ActivityLogFloatingModal({ screenFlag }: ActivityLogFloatingModalProps): JSX.Element {
   const isSmallScreen = screenFlag === 'small-screen';
-  const [open, setOpen] = useState<boolean>(() => !isSmallScreen);
-  const [shouldRender, setShouldRender] = useState<boolean>(() => !isSmallScreen);
-  const [isVisible, setIsVisible] = useState<boolean>(() => !isSmallScreen);
+  const [open, setOpen] = useState<boolean>(false);
+  const [shouldRender, setShouldRender] = useState<boolean>(false);
+  const [isVisible, setIsVisible] = useState<boolean>(false);
 
   useEffect(() => {
     if (open) {
