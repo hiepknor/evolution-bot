@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { AlertCircle, AlertTriangle } from 'lucide-react';
 import { useActivityLogStore } from '@/stores/use-activity-log-store';
@@ -37,11 +37,17 @@ export function QuickToast(): JSX.Element | null {
     return null;
   }, [uiLogs]);
   const [toast, setToast] = useState<ToastView | null>(null);
+  const lastShownToastIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!latest) {
       return;
     }
+    if (lastShownToastIdRef.current === latest.id) {
+      return;
+    }
+
+    lastShownToastIdRef.current = latest.id;
     setToast(latest);
 
     const timer = window.setTimeout(() => {
