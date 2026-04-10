@@ -598,7 +598,7 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
       } else if (typeof error === 'string') {
         message = error;
       } else {
-        message = `Tải danh sách nhóm thất bại: ${JSON.stringify(error)}`;
+        message = `Đồng bộ danh sách nhóm thất bại: ${JSON.stringify(error)}`;
       }
       pushUiLog({
         level: 'error',
@@ -682,12 +682,12 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
       ? canTriggerConnectionCta
         ? 'Mở cài đặt kết nối'
         : connectionRequiredMessage
-      : syncDisabledReason ?? 'Tải danh sách nhóm từ Evo API';
+      : syncDisabledReason ?? 'Đồng bộ danh sách nhóm từ Evo API';
   const syncButtonLabel = isSyncLoading
     ? 'Đang đồng bộ...'
     : isConnectionBlocked
       ? 'Mở cài đặt kết nối'
-      : 'Tải danh sách nhóm';
+      : 'Đồng bộ danh sách nhóm';
   const handleSyncPrimaryAction = () => {
     if (isConnectionBlocked) {
       onOpenConnectionSettings?.();
@@ -700,7 +700,9 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
     ? groups.length > 0
       ? `Đang đồng bộ • ${groups.length} nhóm`
       : 'Đang đồng bộ...'
-    : `${groups.length} nhóm`;
+    : !lastSyncedAt && groups.length === 0
+      ? 'Chưa đồng bộ'
+      : `${groups.length} nhóm`;
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -1287,7 +1289,7 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
                 <p className="mt-1 text-sm text-muted-foreground">
                   {syncMutation.isPending
                     ? 'Đang lấy danh sách nhóm và hoàn tất metadata bắt buộc. Bảng sẽ hiển thị khi dữ liệu sẵn sàng.'
-                    : 'Dùng nút "Tải danh sách nhóm" ở phần điều khiển phía trên để đồng bộ dữ liệu từ Evo API trước khi lọc và chọn nhóm gửi.'}
+                    : 'Dùng nút "Đồng bộ danh sách nhóm" ở phần điều khiển phía trên để lấy dữ liệu từ Evo API trước khi lọc và chọn nhóm gửi.'}
                 </p>
               </div>
             </div>
