@@ -16,6 +16,7 @@ jobs:
       matrix:
         include:
           - os: windows-latest
+          - os: macos-latest
     runs-on: ${{ matrix.os }}
 
     steps:
