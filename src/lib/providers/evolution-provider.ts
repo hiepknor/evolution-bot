@@ -28,18 +28,53 @@ interface EvolutionProviderOptions {
   apiKey: string;
 }
 
-const ADMIN_PERMISSION_DEEP_CHECK_MAX_GROUPS = 180;
 const ADMIN_PERMISSION_DEEP_CHECK_TIMEOUT_MS = 12_000;
 const INSTANCE_LOOKUP_TIMEOUT_MS = 8_000;
 const SETTINGS_LOOKUP_TIMEOUT_MS = 6_000;
 const MISSING_GROUP_RETENTION_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 const GENERIC_MISSING_GROUP_RETENTION_WINDOW_MS = 24 * 60 * 60 * 1000;
 const REFERENCE_FALLBACK_GROUP_LIMIT = 600;
-const GROUP_SYNC_MAX_PASSES = 2;
 const GROUP_JID_PATTERN = /([0-9a-z._:-]+@g\.us)\b/gi;
+const FIND_GROUP_INFOS_TIMEOUT_MS = 12_000;
+const FIND_GROUP_INFOS_CONCURRENCY = 8;
+const FIND_GROUP_INFOS_CACHE_TTL_MS = 5 * 60 * 1000;
+const FIND_GROUP_INFOS_MAX_ATTEMPTS = 1;
+const FIND_GROUP_INFOS_QUERY_KEYS = ['groupJid', 'jid', 'group', 'chatId', 'id'] as const;
+
+const findGroupInfosCache = new Map<string, { payload: unknown; expiresAt: number }>();
+const findGroupInfosInflight = new Map<string, Promise<unknown>>();
 
 const asRecord = (value: unknown): Record<string, unknown> | null =>
   typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : null;
+
+const runWithConcurrency = async <T>(
+  items: T[],
+  limit: number,
+  worker: (item: T) => Promise<void>
+): Promise<void> => {
+  if (items.length === 0) {
+    return;
+  }
+
+  const concurrency = Math.max(1, Math.min(limit, items.length));
+  let cursor = 0;
+  await Promise.all(
+    Array.from({ length: concurrency }, async () => {
+      while (true) {
+        const index = cursor;
+        cursor += 1;
+        if (index >= items.length) {
+          return;
+        }
+        const item = items[index];
+        if (item === undefined) {
+          return;
+        }
+        await worker(item);
+      }
+    })
+  );
+};
 
 const toStringSafe = (value: unknown, depth = 0): string => {
   if (depth > 5) {
@@ -114,12 +149,73 @@ const pickBestChatId = (...values: unknown[]): string => {
   return unique[0] ?? '';
 };
 
+const normalizeGroupJidForLookup = (value: string): string => {
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) {
+    return '';
+  }
+  if (!normalized.includes('@')) {
+    return `${normalized}@g.us`;
+  }
+  return normalized;
+};
+
 const normalizeText = (value: unknown): string => {
   if (typeof value !== 'string') {
     return '';
   }
   return value.replace(/\s+/g, ' ').trim();
 };
+
+const extractGroupSubject = (group: Group): string => {
+  const raw = asRecord(group.raw) ?? {};
+  const metadata = asRecord(raw.groupMetadata ?? raw.metadata) ?? {};
+  const rawAttrs = asRecord(raw.attrs) ?? {};
+  const rawGroupInfo = asRecord(raw.groupInfo) ?? {};
+  const metadataAttrs = asRecord(metadata.attrs) ?? {};
+  const metadataGroupInfo = asRecord(metadata.groupInfo) ?? {};
+  const candidates = [
+    raw.subject,
+    metadata.subject,
+    rawAttrs.subject,
+    rawGroupInfo.subject,
+    metadataAttrs.subject,
+    metadataGroupInfo.subject
+  ];
+
+  for (const candidate of candidates) {
+    const normalized = normalizeText(candidate);
+    if (normalized.length > 0) {
+      return normalized;
+    }
+  }
+
+  return '';
+};
+
+const isGroupDetailsResolved = (group: Group): boolean => {
+  if (!group.chatId.endsWith('@g.us')) {
+    return true;
+  }
+
+  const hasSubject = extractGroupSubject(group).length > 0;
+  if (!hasSubject) {
+    return false;
+  }
+
+  if (group.membersCount <= 0) {
+    return false;
+  }
+
+  if (!group.adminOnly) {
+    return true;
+  }
+
+  const permissionHint = resolveGroupPermissionHint(group);
+  return typeof permissionHint === 'boolean';
+};
+
+const needsGroupDetailsEnrichment = (group: Group): boolean => !isGroupDetailsResolved(group);
 
 const isIdentifierLikeName = (name: string, chatId: string): boolean => {
   const normalizedName = name.trim().toLowerCase();
@@ -665,6 +761,31 @@ const mergeGroupSnapshots = (current: Group, incoming: Group, preferIncomingOnNa
   };
 };
 
+const mergeHydratedGroupSnapshot = (current: Group, incoming: Group): Group => {
+  const merged = mergeGroupSnapshots(current, incoming, true);
+  const incomingHint = resolveGroupPermissionHint(incoming);
+
+  if (incomingHint === false) {
+    return {
+      ...merged,
+      sendable: false
+    };
+  }
+
+  if (incomingHint === true) {
+    return {
+      ...merged,
+      sendable: true
+    };
+  }
+
+  return {
+    ...merged,
+    // Metadata hydration should not make an already sendable group become unsendable.
+    sendable: current.sendable || incoming.sendable
+  };
+};
+
 const looksLikeGroup = (dto: EvolutionGroupDto, normalized: Group): boolean => {
   if (normalized.chatId.endsWith('@g.us')) {
     return true;
@@ -822,18 +943,14 @@ const shouldRetainMissingGroup = (
   return allowGenericRetention && ageMs <= GENERIC_MISSING_GROUP_RETENTION_WINDOW_MS;
 };
 
-type GroupFetchSource = 'fetchAllGroups' | 'findChats' | 'findContacts' | 'referenceFallback';
-type RemoteGroupFetchSource = Exclude<GroupFetchSource, 'referenceFallback'>;
-type SourceRequestVariant = 'primary' | 'fallback';
+type GroupFetchSource = 'fetchAllGroups' | 'referenceFallback';
+type RemoteGroupFetchSource = 'fetchAllGroups';
+type SourceRequestVariant = 'primary';
 
 const groupSourcePriority: Record<GroupFetchSource, number> = {
   referenceFallback: 0,
-  findContacts: 1,
-  findChats: 2,
-  fetchAllGroups: 3
+  fetchAllGroups: 1
 };
-
-const remoteGroupSources: RemoteGroupFetchSource[] = ['fetchAllGroups', 'findChats', 'findContacts'];
 
 const isReferenceFallbackGroup = (group: Group): boolean => {
   const raw = asRecord(group.raw);
@@ -842,6 +959,7 @@ const isReferenceFallbackGroup = (group: Group): boolean => {
 
 export class EvolutionProvider implements MessagingProvider {
   private readonly client: HttpClient;
+  private readonly cacheNamespace: string;
 
   constructor(options: EvolutionProviderOptions) {
     this.client = new HttpClient({
@@ -849,6 +967,7 @@ export class EvolutionProvider implements MessagingProvider {
       apiKey: options.apiKey,
       timeoutMs: 20_000
     });
+    this.cacheNamespace = options.baseUrl.trim().toLowerCase();
   }
 
   async testConnection(): Promise<TestConnectionResult> {
@@ -939,42 +1058,6 @@ export class EvolutionProvider implements MessagingProvider {
         variant: 'primary',
         path: `/group/fetchAllGroups/${encodedInstanceName}?getParticipants=false`,
         timeoutMs: 300_000
-      },
-      {
-        source: 'fetchAllGroups',
-        variant: 'fallback',
-        path: `/group/fetchAllGroups/${encodedInstanceName}`,
-        method: 'POST',
-        body: { getParticipants: false },
-        timeoutMs: 120_000
-      },
-      {
-        source: 'findChats',
-        variant: 'primary',
-        path: `/chat/findChats/${encodedInstanceName}`,
-        method: 'POST',
-        body: {},
-        timeoutMs: 45_000
-      },
-      {
-        source: 'findChats',
-        variant: 'fallback',
-        path: `/chat/findChats/${encodedInstanceName}`,
-        timeoutMs: 25_000
-      },
-      {
-        source: 'findContacts',
-        variant: 'primary',
-        path: `/chat/findContacts/${encodedInstanceName}`,
-        method: 'POST',
-        body: {},
-        timeoutMs: 45_000
-      },
-      {
-        source: 'findContacts',
-        variant: 'fallback',
-        path: `/chat/findContacts/${encodedInstanceName}`,
-        timeoutMs: 25_000
       }
     ];
 
@@ -1007,7 +1090,7 @@ export class EvolutionProvider implements MessagingProvider {
         return;
       }
 
-      const existingSource = sourceByChatId.get(incomingGroup.chatId) ?? 'findChats';
+      const existingSource = sourceByChatId.get(incomingGroup.chatId) ?? 'fetchAllGroups';
       if (groupSourcePriority[incomingSource] >= groupSourcePriority[existingSource]) {
         groupsByChatId.set(
           incomingGroup.chatId,
@@ -1021,6 +1104,91 @@ export class EvolutionProvider implements MessagingProvider {
         incomingGroup.chatId,
         mergeGroupSnapshots(incomingGroup, existingGroup, true)
       );
+    };
+
+    const buildFindGroupInfosCacheKey = (groupJid: string): string => {
+      const normalizedInstance = trimmedInstanceName.toLowerCase();
+      const normalizedGroupJid = normalizeGroupJidForLookup(groupJid);
+      return `${this.cacheNamespace}::${normalizedInstance}::${normalizedGroupJid}`;
+    };
+
+    const requestFindGroupInfos = async (groupJid: string): Promise<unknown> => {
+      const normalizedGroupJid = normalizeGroupJidForLookup(groupJid);
+      if (!normalizedGroupJid) {
+        throw new AppError('INVALID_GROUP_ID', 'Group JID is required');
+      }
+
+      const cacheKey = buildFindGroupInfosCacheKey(normalizedGroupJid);
+      const now = Date.now();
+      const cached = findGroupInfosCache.get(cacheKey);
+      if (cached && cached.expiresAt > now) {
+        return cached.payload;
+      }
+      if (cached && cached.expiresAt <= now) {
+        findGroupInfosCache.delete(cacheKey);
+      }
+
+      const inflight = findGroupInfosInflight.get(cacheKey);
+      if (inflight) {
+        return inflight;
+      }
+
+      const requestPromise = (async () => {
+        let lastError: unknown;
+        for (const queryKey of FIND_GROUP_INFOS_QUERY_KEYS) {
+          try {
+            const payload = await this.client.request<unknown>({
+              path: `/group/findGroupInfos/${encodedInstanceName}?${queryKey}=${encodeURIComponent(normalizedGroupJid)}`,
+              timeoutMs: FIND_GROUP_INFOS_TIMEOUT_MS
+            });
+            findGroupInfosCache.set(cacheKey, {
+              payload,
+              expiresAt: Date.now() + FIND_GROUP_INFOS_CACHE_TTL_MS
+            });
+            return payload;
+          } catch (error) {
+            lastError = error;
+            if (error instanceof AppError) {
+              if (error.status === 404 || error.status === 401 || error.status === 403) {
+                break;
+              }
+              if (error.status === 400) {
+                continue;
+              }
+            }
+          }
+        }
+
+        throw lastError ?? new AppError('FETCH_GROUPS_FAILED', 'Failed to fetch group details');
+      })();
+
+      findGroupInfosInflight.set(cacheKey, requestPromise);
+      try {
+        return await requestPromise;
+      } finally {
+        findGroupInfosInflight.delete(cacheKey);
+      }
+    };
+
+    const pickFindGroupInfosCandidate = (targetChatId: string, candidates: Group[]): Group | null => {
+      if (candidates.length === 0) {
+        return null;
+      }
+
+      const targetLookup = normalizeGroupJidForLookup(targetChatId);
+      const directMatch = candidates.find(
+        (candidate) => normalizeGroupJidForLookup(candidate.chatId) === targetLookup
+      );
+      if (directMatch) {
+        return directMatch;
+      }
+
+      const subjectMatch = candidates.find((candidate) => extractGroupSubject(candidate).length > 0);
+      if (subjectMatch) {
+        return subjectMatch;
+      }
+
+      return candidates[0] ?? null;
     };
 
     let totalFallbackAdded = 0;
@@ -1200,74 +1368,10 @@ export class EvolutionProvider implements MessagingProvider {
       return summary;
     };
 
-    const fetchAllPrimaryRequests = primaryRequests.filter((req) => req.source === 'fetchAllGroups');
-    const findChatsPrimaryRequests = primaryRequests.filter((req) => req.source === 'findChats');
-    const findContactsPrimaryRequests = primaryRequests.filter((req) => req.source === 'findContacts');
-
-    const fetchAllPrimarySummary = await runAndStore(fetchAllPrimaryRequests);
-
-    if (!hadRateLimitFailure) {
-      await runAndStore(findChatsPrimaryRequests);
-    }
-
-    const missingCachedAfterCore = (options?.previousGroups ?? []).filter(
-      (group) => group.chatId.endsWith('@g.us') && !groupsByChatId.has(group.chatId)
-    ).length;
-    const unresolvedAfterCore = countReferenceFallbackGroups();
+    const fetchAllPrimarySummary = await runAndStore(primaryRequests);
     const fetchAllAccepted = fetchAllPrimarySummary?.sourceAccepted.get('fetchAllGroups') ?? 0;
-    const findChatsAccepted = passSummaries
-      .map((summary) => summary.sourceAccepted.get('findChats') ?? 0)
-      .reduce((sum, value) => sum + value, 0);
-    const shouldRunFindContactsPrimary =
-      !hadRateLimitFailure &&
-      (
-        groupsByChatId.size === 0 ||
-        unresolvedAfterCore > 0 ||
-        missingCachedAfterCore > 0 ||
-        fetchAllAccepted === 0 ||
-        findChatsAccepted === 0
-      );
-
-    if (shouldRunFindContactsPrimary) {
-      await runAndStore(findContactsPrimaryRequests);
-    }
-
-    const sourcesNeedingFallback = new Set<RemoteGroupFetchSource>();
-
-    for (const summary of passSummaries) {
-      for (const source of remoteGroupSources) {
-        const attempts = summary.sourceAttempts.get(source) ?? 0;
-        if (attempts === 0) {
-          continue;
-        }
-        const successes = summary.sourceSuccesses.get(source) ?? 0;
-        const accepted = summary.sourceAccepted.get(source) ?? 0;
-        if (successes === 0 || accepted === 0) {
-          sourcesNeedingFallback.add(source);
-        }
-      }
-    }
-
-    if (fetchAllAccepted === 0) {
-      sourcesNeedingFallback.add('findChats');
-    }
-
-    if (countReferenceFallbackGroups() > 0) {
-      sourcesNeedingFallback.add('fetchAllGroups');
-    }
-
-    const shouldRunFallbackPass =
-      GROUP_SYNC_MAX_PASSES >= 2 &&
-      !hadRateLimitFailure &&
-      sourcesNeedingFallback.size > 0;
-
-    if (shouldRunFallbackPass) {
-      const fallbackRequests = requests.filter(
-        (req) => req.variant === 'fallback' && sourcesNeedingFallback.has(req.source)
-      );
-      if (fallbackRequests.length > 0) {
-        await runSyncPass(nextPassIndex, fallbackRequests);
-      }
+    if (fetchAllAccepted === 0 && hadSuccessfulResponse) {
+      diagnostics.push('fetchAllGroups returned zero accepted groups');
     }
 
     const nowMs = Date.now();
@@ -1287,6 +1391,81 @@ export class EvolutionProvider implements MessagingProvider {
     }
 
     if (groupsByChatId.size > 0) {
+      const chatIdsNeedingDetails = Array.from(
+        new Set(
+          Array.from(groupsByChatId.values())
+            .filter((group) => needsGroupDetailsEnrichment(group))
+            .map((group) => group.chatId)
+        )
+      );
+
+      if (chatIdsNeedingDetails.length > 0) {
+        let shouldSkipFindGroupInfos = false;
+        let errorCount = 0;
+        let attempt = 0;
+        let pendingChatIds = new Set(chatIdsNeedingDetails);
+
+        while (attempt < FIND_GROUP_INFOS_MAX_ATTEMPTS && pendingChatIds.size > 0 && !shouldSkipFindGroupInfos) {
+          const unresolvedInAttempt = new Set<string>();
+          const batchChatIds = Array.from(pendingChatIds);
+
+          await runWithConcurrency(batchChatIds, FIND_GROUP_INFOS_CONCURRENCY, async (chatId) => {
+            if (shouldSkipFindGroupInfos) {
+              unresolvedInAttempt.add(chatId);
+              return;
+            }
+
+            try {
+              const payload = await requestFindGroupInfos(chatId);
+              const detailedGroups = extractGroupList(payload)
+                .map((dto) => normalizeGroup(dto))
+                .filter((group) => group.chatId.length > 0);
+              const candidate = pickFindGroupInfosCandidate(chatId, detailedGroups);
+              if (candidate) {
+                const current = groupsByChatId.get(chatId);
+                if (current) {
+                  const hydratedForTarget =
+                    candidate.chatId === chatId
+                      ? candidate
+                      : {
+                          ...candidate,
+                          id: chatId,
+                          chatId
+                        };
+                  groupsByChatId.set(chatId, mergeHydratedGroupSnapshot(current, hydratedForTarget));
+                }
+              }
+            } catch (error) {
+              if (error instanceof AppError && (error.status === 401 || error.status === 403 || error.status === 404)) {
+                shouldSkipFindGroupInfos = true;
+              }
+              errorCount += 1;
+            }
+
+            const current = groupsByChatId.get(chatId);
+            if (!current || !isGroupDetailsResolved(current)) {
+              unresolvedInAttempt.add(chatId);
+            }
+          });
+
+          pendingChatIds = unresolvedInAttempt;
+          attempt += 1;
+
+          if (pendingChatIds.size > 0 && attempt < FIND_GROUP_INFOS_MAX_ATTEMPTS && !shouldSkipFindGroupInfos) {
+            await new Promise((resolve) => {
+              setTimeout(resolve, 180);
+            });
+          }
+        }
+
+        if (errorCount > 0) {
+          diagnostics.push(`findGroupInfos errors=${errorCount}`);
+        }
+        if (pendingChatIds.size > 0) {
+          diagnostics.push(`findGroupInfos unresolved=${pendingChatIds.size}/${chatIdsNeedingDetails.length}`);
+        }
+      }
+
       const unresolvedAdminOnlyGroups: Group[] = [];
       for (const group of groupsByChatId.values()) {
         if (!group.adminOnly) {
@@ -1304,10 +1483,7 @@ export class EvolutionProvider implements MessagingProvider {
         unresolvedAdminOnlyGroups.push(group);
       }
 
-      if (
-        unresolvedAdminOnlyGroups.length > 0 &&
-        groupsByChatId.size <= ADMIN_PERMISSION_DEEP_CHECK_MAX_GROUPS
-      ) {
+      if (unresolvedAdminOnlyGroups.length > 0) {
         try {
           const [instancesData, detailsPayload] = await Promise.all([
             this.client.request<EvolutionInstanceDto[] | Record<string, unknown>>({
