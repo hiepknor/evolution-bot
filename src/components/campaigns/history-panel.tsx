@@ -50,6 +50,17 @@ const formatDateSafe = (value?: string): string => {
   return parsed.isValid() ? parsed.format('YYYY-MM-DD HH:mm') : 'Không rõ thời gian';
 };
 
+const deriveDryRunSuccessCount = (campaign: Campaign): number => {
+  if (!campaign.dryRun) {
+    return 0;
+  }
+  const inferredFromTotals = Math.max(
+    0,
+    campaign.totalTargets - campaign.failedCount - campaign.skippedCount
+  );
+  return Math.max(campaign.sentCount, inferredFromTotals);
+};
+
 export function HistoryPanel(): JSX.Element {
   const [filter, setFilter] = useState<HistoryFilter>('all');
   const [actionError, setActionError] = useState<string | null>(null);
@@ -211,7 +222,11 @@ export function HistoryPanel(): JSX.Element {
                   {item.finishedAt && item.startedAt ? ` • ${Math.max(1, dayjs(item.finishedAt).diff(dayjs(item.startedAt), 'second'))}s` : ''}
                 </div>
                 <div className="mb-2 flex flex-wrap items-center gap-2">
-                  <Badge variant="success">gửi: {item.sentCount}</Badge>
+                  {item.dryRun ? (
+                    <Badge variant="success">chạy thử OK: {deriveDryRunSuccessCount(item)}</Badge>
+                  ) : (
+                    <Badge variant="success">gửi thật: {item.sentCount}</Badge>
+                  )}
                   <Badge variant="destructive">lỗi: {item.failedCount}</Badge>
                   <Badge variant="secondary">bỏ qua: {item.skippedCount}</Badge>
                   {item.dryRun ? <Badge variant="outline">chạy thử</Badge> : null}

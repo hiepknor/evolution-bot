@@ -31,17 +31,33 @@ const defaultConfig: CampaignConfig = {
   whitelistMode: false,
   warningThreshold: 50
 };
+
+const deriveDryRunSuccessCount = (campaign: Pick<Campaign, 'dryRun' | 'totalTargets' | 'sentCount' | 'failedCount' | 'skippedCount'>): number => {
+  if (!campaign.dryRun) {
+    return 0;
+  }
+
+  const inferredFromTotals = Math.max(
+    0,
+    campaign.totalTargets - campaign.failedCount - campaign.skippedCount
+  );
+  return Math.max(campaign.sentCount, inferredFromTotals);
+};
+
 const campaignToProgress = (campaign: Campaign): QueueProgress => {
+  const dryRunSuccess = deriveDryRunSuccessCount(campaign);
+  const sent = campaign.dryRun ? 0 : campaign.sentCount;
   const processed = Math.min(
     campaign.totalTargets,
-    campaign.sentCount + campaign.failedCount + campaign.skippedCount
+    sent + dryRunSuccess + campaign.failedCount + campaign.skippedCount
   );
 
   return {
     campaignId: campaign.id,
     total: campaign.totalTargets,
     processed,
-    sent: campaign.sentCount,
+    sent,
+    dryRunSuccess,
     failed: campaign.failedCount,
     skipped: campaign.skippedCount,
     etaMs: 0
@@ -351,6 +367,7 @@ export const useCampaignStore = create<CampaignStore>((set, get) => ({
         total: campaign.totalTargets,
         processed: 0,
         sent: 0,
+        dryRunSuccess: 0,
         failed: 0,
         skipped: 0,
         etaMs: 0

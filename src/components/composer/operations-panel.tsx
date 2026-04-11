@@ -18,6 +18,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { panelTokens } from '@/components/layout/panel-tokens';
+import { resolveGroupPermissionState } from '@/lib/groups/group-filtering';
 import { lintTemplate } from '@/lib/templates/render-template';
 import { useCampaignStore } from '@/stores/use-campaign-store';
 import { useActivityLogStore } from '@/stores/use-activity-log-store';
@@ -121,6 +122,20 @@ export function OperationsPanel(): JSX.Element {
     [blockedIds, campaignStore.config.whitelistMode, selectedGroups]
   );
   const effectiveTargetCount = effectiveTargets.length;
+  const permissionBlockedTargets = useMemo(
+    () => effectiveTargets.filter((group) => resolveGroupPermissionState(group) === 'blocked'),
+    [effectiveTargets]
+  );
+  const permissionBlockedCount = permissionBlockedTargets.length;
+  const permissionAllowedCount = Math.max(0, effectiveTargetCount - permissionBlockedCount);
+  const permissionBlockedPreview = useMemo(
+    () =>
+      permissionBlockedTargets
+        .slice(0, 3)
+        .map((group) => group.name.trim() || group.chatId)
+        .join(', '),
+    [permissionBlockedTargets]
+  );
   const hasTargets = effectiveTargetCount > 0;
   const templateIssues = useMemo(
     () => lintTemplate(composer.captionTemplate),
@@ -477,6 +492,22 @@ export function OperationsPanel(): JSX.Element {
               : `Khối lượng gửi lớn: ${effectiveTargetCount} nhóm (ngưỡng ${campaignStore.config.warningThreshold}). Nên chạy thử trước khi gửi thật.`}
           </div>
         )}
+        {permissionBlockedCount > 0 ? (
+          <div className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
+            <p className="font-medium">
+              Dự kiến bỏ qua {permissionBlockedCount}/{effectiveTargetCount} nhóm do không có quyền
+              gửi.
+            </p>
+            <p className="mt-1">
+              Có thể xử lý tối đa {permissionAllowedCount} nhóm.
+              {permissionBlockedPreview
+                ? ` Ví dụ: ${permissionBlockedPreview}${
+                    permissionBlockedCount > 3 ? ` +${permissionBlockedCount - 3} nhóm khác.` : '.'
+                  }`
+                : ''}
+            </p>
+          </div>
+        ) : null}
 
         {hasTemplateErrors ? (
           <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
@@ -751,8 +782,12 @@ export function OperationsPanel(): JSX.Element {
             </div>
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <span>Đã chọn {selectedCount}</span>
-              <span>Hợp lệ</span>
+              <span>Hợp lệ theo danh sách</span>
               <Badge variant={hasTargets ? 'success' : 'warning'}>{effectiveTargetCount}</Badge>
+              <span>Có quyền gửi</span>
+              <Badge variant={permissionAllowedCount > 0 ? 'success' : 'warning'}>
+                {permissionAllowedCount}
+              </Badge>
             </div>
           </div>
 
@@ -848,6 +883,12 @@ export function OperationsPanel(): JSX.Element {
               {!dryRun && confirmDuplicateWarning ? (
                 <div className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
                   {confirmDuplicateWarning} Trùng theo tiêu chí: ảnh + nội dung + nhóm nhận.
+                </div>
+              ) : null}
+              {permissionBlockedCount > 0 ? (
+                <div className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
+                  Dự kiến bỏ qua {permissionBlockedCount}/{effectiveTargetCount} nhóm do không có
+                  quyền gửi. Có thể xử lý tối đa {permissionAllowedCount} nhóm.
                 </div>
               ) : null}
             </AlertDialogHeader>

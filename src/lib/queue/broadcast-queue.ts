@@ -12,6 +12,7 @@ import type {
   SendResult,
   TargetStatus
 } from '@/lib/types/domain';
+import { resolveGroupPermissionState } from '@/lib/groups/group-filtering';
 import { randomBetween, sleep } from '@/lib/utils/delay';
 
 export interface BroadcastQueueInput {
@@ -105,6 +106,7 @@ export class BroadcastQueue {
   private emitProgress(state: {
     processed: number;
     sent: number;
+    dryRunSuccess: number;
     failed: number;
     skipped: number;
     averageMs: number;
@@ -117,6 +119,7 @@ export class BroadcastQueue {
       total: this.groups.length,
       processed: state.processed,
       sent: state.sent,
+      dryRunSuccess: state.dryRunSuccess,
       failed: state.failed,
       skipped: state.skipped,
       etaMs,
@@ -157,6 +160,7 @@ export class BroadcastQueue {
     const startedAt = Date.now();
     const targets: CampaignTarget[] = [];
     let sent = 0;
+    let dryRunSuccess = 0;
     let failed = 0;
     let skipped = 0;
     const usedRandomTags = new Set<string>();
@@ -185,6 +189,7 @@ export class BroadcastQueue {
         this.emitProgress({
           processed,
           sent,
+          dryRunSuccess,
           failed,
           skipped,
           averageMs,
@@ -193,9 +198,11 @@ export class BroadcastQueue {
         continue;
       }
 
-      if (!group.sendable) {
+      if (resolveGroupPermissionState(group) === 'blocked') {
         target.status = 'skipped';
-        target.lastError = 'Nhóm không có quyền gửi';
+        target.lastError = !group.sendable
+          ? 'Nhóm không có quyền gửi'
+          : 'Nhóm bị chặn theo metadata quyền gửi';
         target.finishedAt = new Date().toISOString();
         targets.push(target);
         skipped += 1;
@@ -213,6 +220,7 @@ export class BroadcastQueue {
         this.emitProgress({
           processed,
           sent,
+          dryRunSuccess,
           failed,
           skipped,
           averageMs,
@@ -280,8 +288,10 @@ export class BroadcastQueue {
       target.finishedAt = new Date().toISOString();
       targets.push(target);
 
-      if (finalStatus === 'sent' || finalStatus === 'dry-run-success') {
+      if (finalStatus === 'sent') {
         sent += 1;
+      } else if (finalStatus === 'dry-run-success') {
+        dryRunSuccess += 1;
       } else if (finalStatus === 'cancelled') {
         skipped += 1;
       } else {
@@ -299,8 +309,10 @@ export class BroadcastQueue {
               ? 'warn'
               : 'error',
         message:
-          finalStatus === 'sent' || finalStatus === 'dry-run-success'
+          finalStatus === 'sent'
             ? `Đã gửi tới ${target.groupName}`
+            : finalStatus === 'dry-run-success'
+              ? `Chạy thử thành công tới ${target.groupName}`
             : finalStatus === 'cancelled'
               ? `Đã hủy gửi tới ${target.groupName}`
               : `Gửi thất bại tới ${target.groupName}`,
@@ -318,6 +330,7 @@ export class BroadcastQueue {
       this.emitProgress({
         processed,
         sent,
+        dryRunSuccess,
         failed,
         skipped,
         averageMs,
@@ -343,6 +356,7 @@ export class BroadcastQueue {
       total: this.groups.length,
       processed: targets.length,
       sent,
+      dryRunSuccess,
       failed,
       skipped,
       etaMs: 0,

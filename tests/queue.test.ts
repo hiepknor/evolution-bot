@@ -66,7 +66,8 @@ describe('broadcast queue', () => {
     const result = await queue.run();
 
     expect(result.summary.processed).toBe(2);
-    expect(result.summary.sent).toBe(2);
+    expect(result.summary.sent).toBe(0);
+    expect(result.summary.dryRunSuccess).toBe(2);
     expect(result.targets.every((target) => target.status === 'dry-run-success')).toBe(true);
   });
 

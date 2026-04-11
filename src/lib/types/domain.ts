@@ -137,6 +137,7 @@ export interface QueueProgress {
   total: number;
   processed: number;
   sent: number;
+  dryRunSuccess: number;
   failed: number;
   skipped: number;
   etaMs: number;
