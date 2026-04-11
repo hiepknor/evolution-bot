@@ -129,6 +129,19 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       return;
     }
 
+    if (settings.providerMode === 'mock') {
+      set({
+        badgeState: 'connected',
+        connectedInstanceName: settings.instanceName,
+        statusMessage: `Kết nối thành công tới ${settings.instanceName}`
+      });
+      useActivityLogStore.getState().pushUiLog({
+        level: 'success',
+        message: `Kết nối thành công tới instance ${settings.instanceName}`
+      });
+      return;
+    }
+
     set({ badgeState: 'checking', statusMessage: 'Đang kiểm tra kết nối...' });
     useActivityLogStore.getState().pushUiLog({
       level: 'info',
@@ -142,26 +155,43 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     });
 
     try {
-      const result = await provider.testConnection();
-      const mappedMessage = mapConnectionMessage(result.message);
+      const availableInstances = await provider.fetchInstances();
+      const normalizedConfigured = settings.instanceName.trim().toLowerCase();
+      const normalizedAvailable = availableInstances.map((item) => item.trim().toLowerCase());
+      const configuredInList = normalizedAvailable.includes(normalizedConfigured);
 
-      if (result.ok) {
-        set({
-          badgeState: 'connected',
-          connectedInstanceName: settings.instanceName,
-          statusMessage: `Kết nối thành công tới ${settings.instanceName}`
-        });
+      if (!configuredInList) {
+        const message =
+          availableInstances.length > 0
+            ? `Instance "${settings.instanceName}" không có trong danh sách khả dụng: ${availableInstances.join(', ')}`
+            : `Không tìm thấy instance "${settings.instanceName}" trong phản hồi từ máy chủ.`;
+        set({ badgeState: 'disconnected', statusMessage: message });
         useActivityLogStore.getState().pushUiLog({
-          level: 'success',
-          message: `Kết nối thành công tới instance ${settings.instanceName}`
+          level: 'error',
+          message: `Kiểm tra kết nối thất bại: ${message}`
         });
         return;
       }
 
-      set({ badgeState: 'disconnected', statusMessage: mappedMessage });
+      const connectionState = await provider.getConnectionState(settings.instanceName);
+      if (!connectionState.isConnected) {
+        const message = `Instance "${settings.instanceName}" chưa kết nối (state: ${connectionState.state}).`;
+        set({ badgeState: 'disconnected', statusMessage: message });
+        useActivityLogStore.getState().pushUiLog({
+          level: 'error',
+          message: `Kiểm tra kết nối thất bại: ${message}`
+        });
+        return;
+      }
+
+      set({
+        badgeState: 'connected',
+        connectedInstanceName: settings.instanceName,
+        statusMessage: `Kết nối thành công tới ${settings.instanceName}`
+      });
       useActivityLogStore.getState().pushUiLog({
-        level: 'error',
-        message: `Kiểm tra kết nối thất bại: ${mappedMessage}`
+        level: 'success',
+        message: `Kết nối thành công tới instance ${settings.instanceName}`
       });
     } catch (error) {
       const fallbackMessage = mapConnectionMessage(

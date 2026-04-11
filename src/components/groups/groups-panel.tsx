@@ -15,7 +15,6 @@ import { settingsRepo } from '@/lib/db/repositories';
 import {
   applyGroupFilters,
   createGroupStatusMap,
-  createSentStatusMap,
   parseMinMembersInput,
   resolveGroupPermissionState,
   type GroupFilterCounts,
@@ -56,12 +55,13 @@ const selectedCheckboxClass =
   'border-border/70 data-[state=checked]:border-emerald-400/90 data-[state=checked]:bg-emerald-500/90 data-[state=checked]:text-emerald-50';
 
 const stickyHeaderCellClass =
-  'sticky z-20 bg-card px-3 py-2.5 align-middle text-sm font-semibold text-foreground shadow-[inset_0_-1px_0_hsl(var(--border))]';
+  'sticky top-0 z-20 bg-card px-3 py-2.5 align-middle text-sm font-semibold text-foreground shadow-[inset_0_-1px_0_hsl(var(--border))]';
 
 const statusFilterLabel: Record<GroupStatusFilterMode, string> = {
   all: 'Tất cả',
   pending: 'Chưa gửi',
-  sent: 'Đã gửi'
+  sent: 'Đã gửi',
+  'dry-run-success': 'Chạy thử thành công'
 };
 
 const permissionFilterLabel: Record<GroupPermissionFilterMode, string> = {
@@ -140,10 +140,8 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
   const [searchInputComposing, setSearchInputComposing] = useState(false);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const tableViewportRef = useRef<HTMLDivElement | null>(null);
-  const stickyFiltersRef = useRef<HTMLDivElement | null>(null);
   const rowRefs = useRef<Map<string, HTMLTableRowElement>>(new Map());
   const lastAutoScrolledChatIdRef = useRef<string | null>(null);
-  const [tableHeaderTopOffset, setTableHeaderTopOffset] = useState(0);
   const [groupsIgnoreFlag, setGroupsIgnoreFlag] = useState<boolean | null>(null);
 
   const {
@@ -228,7 +226,6 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
 
   const minMembers = useMemo(() => parseMinMembersInput(minMembersInput), [minMembersInput]);
   const groupStatusByChatId = useMemo(() => createGroupStatusMap(targets), [targets]);
-  const sentStatusByChatId = useMemo(() => createSentStatusMap(targets), [targets]);
   const normalizedConfigList = useMemo(
     () =>
       Array.from(
@@ -266,9 +263,9 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
         minMembers,
         statusFilterMode: 'all',
         permissionFilterMode: 'all',
-        sentStatusByChatId
+        statusByChatId: groupStatusByChatId
       }),
-    [deferredSearchTerm, groups, minMembers, sentStatusByChatId]
+    [deferredSearchTerm, groupStatusByChatId, groups, minMembers]
   );
   const filteredBySearchAndStatus = useMemo(
     () =>
@@ -278,9 +275,9 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
         minMembers,
         statusFilterMode,
         permissionFilterMode: 'all',
-        sentStatusByChatId
+        statusByChatId: groupStatusByChatId
       }),
-    [deferredSearchTerm, groups, minMembers, sentStatusByChatId, statusFilterMode]
+    [deferredSearchTerm, groupStatusByChatId, groups, minMembers, statusFilterMode]
   );
   const filtered = useMemo(
     () =>
@@ -296,14 +293,18 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
   );
   const filterCounts = useMemo<GroupFilterCounts>(() => {
     let sent = 0;
+    let dryRunSuccess = 0;
     let pending = 0;
     let allowed = 0;
     let blocked = 0;
     let unknown = 0;
 
     for (const group of filteredForCounts) {
-      if (sentStatusByChatId.get(group.chatId) === true) {
+      const status = groupStatusByChatId.get(group.chatId);
+      if (status === 'sent') {
         sent += 1;
+      } else if (status === 'dry-run-success') {
+        dryRunSuccess += 1;
       } else {
         pending += 1;
       }
@@ -323,6 +324,7 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
       status: {
         all: filteredForCounts.length,
         sent,
+        dryRunSuccess,
         pending
       },
       permission: {
@@ -332,33 +334,34 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
         unknown
       }
     };
-  }, [filteredForCounts, listPolicyByChatId, sentStatusByChatId]);
+  }, [filteredForCounts, groupStatusByChatId, listPolicyByChatId]);
   const selectableVisibleIds = useMemo(
-    () =>
-      filtered
-        .filter((group) => {
-          const blockedByList = listPolicyByChatId.get(group.chatId)?.blocked === true;
-          return resolveEffectivePermissionState(group, blockedByList) !== 'blocked';
-        })
-        .map((group) => group.chatId),
-    [filtered, listPolicyByChatId]
+    () => filtered.map((group) => group.chatId),
+    [filtered]
   );
 
   const allVisibleSelected =
     selectableVisibleIds.length > 0 && selectableVisibleIds.every((chatId) => selectedIds.has(chatId));
   const selectedVisibleCount = selectableVisibleIds.filter((chatId) => selectedIds.has(chatId)).length;
-  const blockedVisibleCount = filtered.length - selectableVisibleIds.length;
+  const blockedVisibleCount = useMemo(
+    () =>
+      filtered.filter((group) => {
+        const blockedByList = listPolicyByChatId.get(group.chatId)?.blocked === true;
+        return resolveEffectivePermissionState(group, blockedByList) === 'blocked';
+      }).length,
+    [filtered, listPolicyByChatId]
+  );
   const listBlockedVisibleCount = useMemo(
     () => filtered.filter((group) => listPolicyByChatId.get(group.chatId)?.blocked === true).length,
     [filtered, listPolicyByChatId]
   );
   const listModeLabel = campaignConfig.whitelistMode ? 'Danh sách cho phép' : 'Danh sách chặn';
   const listModeShortLabel = campaignConfig.whitelistMode ? 'DS cho phép' : 'DS chặn';
-  const blockedSelectionLabel = `Khóa chọn: ${blockedVisibleCount}`;
+  const blockedSelectionLabel = `Có thể bỏ qua: ${blockedVisibleCount}`;
   const blockedSelectionDetail =
     listBlockedVisibleCount > 0
-      ? `${blockedVisibleCount} nhóm bị khóa chọn; ${listBlockedVisibleCount} do ${listModeShortLabel}.`
-      : `${blockedVisibleCount} nhóm bị khóa chọn do quyền gửi.`;
+      ? `${blockedVisibleCount} nhóm có thể bị bỏ qua khi chạy; ${listBlockedVisibleCount} do ${listModeShortLabel}.`
+      : `${blockedVisibleCount} nhóm có thể bị bỏ qua do quyền gửi.`;
   const hasSearchFilter = searchInputValue.trim().length > 0;
   const hasMinMembersFilter = minMembers !== null;
   const hasStatusFilter = statusFilterMode !== 'all';
@@ -792,29 +795,6 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
     }
   }, [running]);
 
-  useEffect(() => {
-    const stickyFiltersElement = stickyFiltersRef.current;
-    if (!stickyFiltersElement) {
-      setTableHeaderTopOffset(0);
-      return;
-    }
-
-    const syncHeaderOffset = () => {
-      setTableHeaderTopOffset(stickyFiltersElement.offsetHeight);
-    };
-
-    syncHeaderOffset();
-
-    if (typeof ResizeObserver !== 'undefined') {
-      const observer = new ResizeObserver(() => syncHeaderOffset());
-      observer.observe(stickyFiltersElement);
-      return () => observer.disconnect();
-    }
-
-    window.addEventListener('resize', syncHeaderOffset);
-    return () => window.removeEventListener('resize', syncHeaderOffset);
-  }, []);
-
   return (
     <Card className="flex h-full min-h-0 flex-col overflow-hidden border-border/80 bg-card/80 backdrop-blur-sm">
       <CardHeader className={`space-y-1 border-b border-border/70 ${panelTokens.cardHeader}`}>
@@ -912,13 +892,10 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
           ) : null}
         </div>
 
-        <div ref={tableViewportRef} className="isolate min-h-0 flex-1 overflow-auto rounded-md border border-border">
+        <div className="isolate min-h-0 flex-1 overflow-hidden rounded-md border border-border">
           {hasGroups ? (
             <>
-              <div
-                ref={stickyFiltersRef}
-                className="sticky top-0 z-30 space-y-3 border-b border-border/70 bg-card p-3"
-              >
+              <div className="space-y-3 border-b border-border/70 bg-card p-3">
                 <div className="space-y-2">
                   <div className="flex flex-wrap items-center gap-2">
                     <div className="relative min-w-[240px] flex-1">
@@ -978,6 +955,16 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
                         className={`${panelTokens.control} rounded-sm px-3`}
                       >
                         {statusFilterMode === 'sent' ? `Đã gửi (${filterCounts.status.sent})` : 'Đã gửi'}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={statusFilterMode === 'dry-run-success' ? 'default' : 'ghost'}
+                        onClick={() => setStatusFilterMode('dry-run-success')}
+                        className={`${panelTokens.control} rounded-sm px-3`}
+                      >
+                        {statusFilterMode === 'dry-run-success'
+                          ? `Chạy thử OK (${filterCounts.status.dryRunSuccess})`
+                          : 'Chạy thử OK'}
                       </Button>
                     </div>
                     <Select
@@ -1134,7 +1121,8 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
                 </div>
               </div>
 
-              <table className="relative z-0 w-full table-fixed border-separate border-spacing-0 text-sm leading-5">
+              <div ref={tableViewportRef} className="min-h-0 flex-1 overflow-auto">
+                <table className="relative z-0 w-full table-fixed border-separate border-spacing-0 text-sm leading-5">
                 <colgroup>
                   <col className="w-[4%]" />
                   <col className="w-[27%]" />
@@ -1147,7 +1135,7 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
                 </colgroup>
                 <thead>
                   <tr>
-                    <th className={`${stickyHeaderCellClass} whitespace-nowrap text-left`} style={{ top: tableHeaderTopOffset }}>
+                    <th className={`${stickyHeaderCellClass} whitespace-nowrap text-left`}>
                       <Checkbox
                         className={selectedCheckboxClass}
                         checked={allVisibleSelected}
@@ -1161,15 +1149,15 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
                         }}
                       />
                     </th>
-                    <th className={`${stickyHeaderCellClass} whitespace-nowrap text-left`} style={{ top: tableHeaderTopOffset }}>Nhóm</th>
-                    <th className={`${stickyHeaderCellClass} whitespace-nowrap text-right`} style={{ top: tableHeaderTopOffset }}>Thành viên</th>
-                    <th className={`${stickyHeaderCellClass} whitespace-nowrap text-left`} style={{ top: tableHeaderTopOffset }}>Chat ID</th>
-                    <th className={`${stickyHeaderCellClass} whitespace-nowrap text-center`} style={{ top: tableHeaderTopOffset }}>
+                    <th className={`${stickyHeaderCellClass} whitespace-nowrap text-left`}>Nhóm</th>
+                    <th className={`${stickyHeaderCellClass} whitespace-nowrap text-right`}>Thành viên</th>
+                    <th className={`${stickyHeaderCellClass} whitespace-nowrap text-left`}>Chat ID</th>
+                    <th className={`${stickyHeaderCellClass} whitespace-nowrap text-center`}>
                       <Copy className="mx-auto h-4 w-4 text-muted-foreground" />
                     </th>
-                    <th className={`${stickyHeaderCellClass} whitespace-nowrap text-left`} style={{ top: tableHeaderTopOffset }}>Quyền gửi</th>
-                    <th className={`${stickyHeaderCellClass} whitespace-nowrap text-center`} style={{ top: tableHeaderTopOffset }}>Hành động</th>
-                    <th className={`${stickyHeaderCellClass} whitespace-nowrap text-center`} style={{ top: tableHeaderTopOffset }}>Trạng thái</th>
+                    <th className={`${stickyHeaderCellClass} whitespace-nowrap text-left`}>Quyền gửi</th>
+                    <th className={`${stickyHeaderCellClass} whitespace-nowrap text-center`}>Hành động</th>
+                    <th className={`${stickyHeaderCellClass} whitespace-nowrap text-center`}>Trạng thái</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1241,7 +1229,6 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
                             <Checkbox
                               className={selectedCheckboxClass}
                               checked={selectedIds.has(group.chatId)}
-                              disabled={isSelectionBlocked}
                               onCheckedChange={() => toggleSelect(group.chatId)}
                             />
                           </td>
@@ -1311,7 +1298,8 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
                     </tr>
                   )}
                 </tbody>
-              </table>
+                </table>
+              </div>
             </>
           ) : (
             <div className="flex h-full min-h-[420px] items-center justify-center p-4">

@@ -4,7 +4,7 @@ import {
   GROUP_PERMISSION_HINT_KEY
 } from '@/lib/groups/group-metadata';
 
-export type GroupStatusFilterMode = 'all' | 'sent' | 'pending';
+export type GroupStatusFilterMode = 'all' | 'sent' | 'pending' | 'dry-run-success';
 export type GroupPermissionFilterMode = 'all' | 'allowed' | 'blocked' | 'unknown';
 export type GroupPermissionState = Exclude<GroupPermissionFilterMode, 'all'>;
 
@@ -12,6 +12,7 @@ export interface GroupFilterCounts {
   status: {
     all: number;
     sent: number;
+    dryRunSuccess: number;
     pending: number;
   };
   permission: {
@@ -22,7 +23,6 @@ export interface GroupFilterCounts {
   };
 }
 
-const sentStatuses = new Set<TargetStatus>(['sent', 'dry-run-success']);
 const asRecord = (value: unknown): Record<string, unknown> | null =>
   typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : null;
 
@@ -47,18 +47,8 @@ export const createGroupStatusMap = (targets: CampaignTarget[]): Map<string, Tar
   return result;
 };
 
-export const createSentStatusMap = (targets: CampaignTarget[]): Map<string, boolean> => {
-  const result = new Map<string, boolean>();
-  const statusByChatId = createGroupStatusMap(targets);
-
-  for (const [chatId, status] of statusByChatId.entries()) {
-    result.set(chatId, sentStatuses.has(status));
-  }
-
-  return result;
-};
-
-const matchesSearch = (group: Group, normalizedTerm: string): boolean => {
+const matchesSearch = (group: Group, searchTerm: string): boolean => {
+  const normalizedTerm = searchTerm.trim().toLowerCase();
   if (!normalizedTerm) {
     return true;
   }
@@ -91,21 +81,29 @@ export const resolveGroupPermissionState = (group: Group): GroupPermissionState 
   return 'allowed';
 };
 
+const isSentStatus = (status: TargetStatus | undefined): boolean => status === 'sent';
+
+const isDryRunSuccessStatus = (status: TargetStatus | undefined): boolean =>
+  status === 'dry-run-success';
+
 const matchesStatusMode = (
   group: Group,
   statusFilterMode: GroupStatusFilterMode,
-  sentStatusByChatId: Map<string, boolean>
+  statusByChatId: Map<string, TargetStatus>
 ): boolean => {
-  const sent = sentStatusByChatId.get(group.chatId) === true;
+  const status = statusByChatId.get(group.chatId);
 
   if (statusFilterMode === 'all') {
     return true;
   }
+  if (statusFilterMode === 'dry-run-success') {
+    return isDryRunSuccessStatus(status);
+  }
   if (statusFilterMode === 'sent') {
-    return sent;
+    return isSentStatus(status);
   }
 
-  return !sent;
+  return !isSentStatus(status) && !isDryRunSuccessStatus(status);
 };
 
 const matchesPermissionMode = (
@@ -124,43 +122,45 @@ export const applyGroupFilters = ({
   minMembers,
   statusFilterMode,
   permissionFilterMode,
-  sentStatusByChatId
+  statusByChatId
 }: {
   groups: Group[];
   searchTerm: string;
   minMembers: number | null;
   statusFilterMode: GroupStatusFilterMode;
   permissionFilterMode: GroupPermissionFilterMode;
-  sentStatusByChatId: Map<string, boolean>;
-}): Group[] => {
-  const normalizedTerm = searchTerm.trim().toLowerCase();
-  return groups.filter((group) => {
-    if (!matchesSearch(group, normalizedTerm)) {
+  statusByChatId: Map<string, TargetStatus>;
+}): Group[] =>
+  groups.filter((group) => {
+    if (!matchesSearch(group, searchTerm)) {
       return false;
     }
     if (minMembers !== null && group.membersCount < minMembers) {
       return false;
     }
-    if (!matchesStatusMode(group, statusFilterMode, sentStatusByChatId)) {
+    if (!matchesStatusMode(group, statusFilterMode, statusByChatId)) {
       return false;
     }
     return matchesPermissionMode(group, permissionFilterMode);
   });
-};
 
 export const countGroupsByMode = (
   groups: Group[],
-  sentStatusByChatId: Map<string, boolean>
+  statusByChatId: Map<string, TargetStatus>
 ): GroupFilterCounts => {
   let sent = 0;
+  let dryRunSuccess = 0;
   let pending = 0;
   let allowed = 0;
   let blocked = 0;
   let unknown = 0;
 
   for (const group of groups) {
-    if (sentStatusByChatId.get(group.chatId) === true) {
+    const status = statusByChatId.get(group.chatId);
+    if (isSentStatus(status)) {
       sent += 1;
+    } else if (isDryRunSuccessStatus(status)) {
+      dryRunSuccess += 1;
     } else {
       pending += 1;
     }
@@ -179,6 +179,7 @@ export const countGroupsByMode = (
     status: {
       all: groups.length,
       sent,
+      dryRunSuccess,
       pending
     },
     permission: {

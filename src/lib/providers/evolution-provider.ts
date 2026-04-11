@@ -1420,7 +1420,7 @@ export class EvolutionProvider implements MessagingProvider {
       }
     };
 
-    const pickFindGroupInfosCandidate = (targetChatId: string, candidates: Group[]): Group | null => {
+    const _pickFindGroupInfosCandidate = (targetChatId: string, candidates: Group[]): Group | null => {
       if (candidates.length === 0) {
         return null;
       }
@@ -1518,7 +1518,7 @@ export class EvolutionProvider implements MessagingProvider {
       return addedInPass;
     };
 
-    const countReferenceFallbackGroups = (): number => {
+    const _countReferenceFallbackGroups = (): number => {
       let count = 0;
       for (const group of groupsByChatId.values()) {
         if (isReferenceFallbackGroup(group)) {
