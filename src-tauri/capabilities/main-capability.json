@@ -32,7 +32,6 @@
         }
       ]
     },
-    "shell:default",
     "sql:default",
     "sql:allow-execute"
   ]
