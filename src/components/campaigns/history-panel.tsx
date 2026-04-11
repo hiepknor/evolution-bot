@@ -152,7 +152,7 @@ export function HistoryPanel(): JSX.Element {
       </CardHeader>
       <CardContent className={panelTokens.cardContent}>
         <div
-          className="w-full overflow-x-auto rounded-md border border-border/40 bg-muted/10 p-0.5"
+          className="w-full overflow-x-auto rounded-lg border border-border/30 bg-muted/[0.08] p-1"
           role="tablist"
           aria-label="Bộ lọc trạng thái chiến dịch"
         >
@@ -164,7 +164,7 @@ export function HistoryPanel(): JSX.Element {
                 role="tab"
                 aria-selected={filter === key}
                 aria-pressed={filter === key}
-                className={`inline-flex h-9 min-w-[112px] shrink-0 items-center justify-center whitespace-nowrap rounded-md px-3 py-0 text-sm font-medium leading-none tabular-nums transition-colors ${
+                className={`inline-flex ${panelTokens.control} min-w-[112px] shrink-0 items-center justify-center whitespace-nowrap px-3 py-0 font-medium leading-none tabular-nums transition-colors ${
                   filter === key
                     ? 'bg-primary text-primary-foreground'
                     : 'text-foreground/85 hover:bg-muted/50'
@@ -179,24 +179,24 @@ export function HistoryPanel(): JSX.Element {
         </div>
         <div className="space-y-2">
           {actionError ? (
-            <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+            <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
               {actionError}
             </div>
           ) : null}
           {historyLoading ? (
-            <div className="rounded-md border border-border/40 bg-muted/10 p-3 text-sm text-muted-foreground">
+            <div className="rounded-lg border border-border/30 bg-muted/[0.08] p-3 text-sm text-muted-foreground">
               Đang tải lịch sử chiến dịch...
             </div>
           ) : historyError ? (
-            <div className="space-y-2 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+            <div className="space-y-2 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
               <p>{historyError}</p>
-              <Button variant="outline" className="h-9 px-3 text-sm" onClick={() => void onRetryHistory()}>
+              <Button variant="outline" className={`${panelTokens.control} px-3`} onClick={() => void onRetryHistory()}>
                 Tải lại
               </Button>
             </div>
           ) : filteredHistory.length > 0 ? (
             filteredHistory.map((item) => (
-              <div key={item.id} className="rounded-md border border-border/40 bg-muted/10 p-3">
+              <div key={item.id} className="rounded-lg border border-border/30 bg-muted/[0.08] p-3">
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold text-foreground">{item.name || item.id}</p>
@@ -223,7 +223,7 @@ export function HistoryPanel(): JSX.Element {
                 </div>
                 <div className="mb-2 flex flex-wrap items-center gap-2">
                   {item.dryRun ? (
-                    <Badge variant="success">chạy thử OK: {deriveDryRunSuccessCount(item)}</Badge>
+                    <Badge variant="success">chạy thử: {deriveDryRunSuccessCount(item)}</Badge>
                   ) : (
                     <Badge variant="success">gửi thật: {item.sentCount}</Badge>
                   )}
@@ -234,14 +234,14 @@ export function HistoryPanel(): JSX.Element {
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                     <Button
-                      className="h-9 justify-center px-3 text-sm font-semibold"
+                      className={`${panelTokens.control} justify-center px-3 font-semibold`}
                       onClick={() => void onOpenCampaign(item.id)}
                     >
                       Mở
                     </Button>
                     <Button
                       variant="secondary"
-                      className="h-9 justify-center px-3 text-sm"
+                      className={`${panelTokens.control} justify-center px-3`}
                       onClick={() => {
                         if (
                           hasComposerDraft &&
@@ -259,14 +259,14 @@ export function HistoryPanel(): JSX.Element {
                   <div className="flex items-center gap-2 sm:justify-end">
                     <Button
                       variant="outline"
-                      className="h-9 px-3 text-sm"
+                      className={`${panelTokens.control} px-3`}
                       onClick={() => void onExportCsv(item.id)}
                     >
                       Xuất
                     </Button>
                     <Button
                       variant="outline"
-                      className="h-9 border-destructive/40 px-3 text-sm text-destructive hover:bg-destructive/10"
+                      className={`${panelTokens.control} border-destructive/40 px-3 text-destructive hover:bg-destructive/10`}
                       onClick={() => {
                         if (item.status === 'running') {
                           setActionError('Không thể xóa chiến dịch đang chạy');
@@ -285,7 +285,7 @@ export function HistoryPanel(): JSX.Element {
               </div>
             ))
           ) : (
-            <div className="rounded-md border border-dashed border-border/40 bg-muted/10 p-3 text-sm text-muted-foreground">
+            <div className="rounded-lg border border-dashed border-border/40 bg-muted/[0.08] p-3 text-sm text-muted-foreground">
               {safeHistory.length > 0
                 ? 'Không có chiến dịch khớp bộ lọc hiện tại.'
                 : 'Chưa có chiến dịch nào trong lịch sử. Hãy chạy chiến dịch đầu tiên.'}

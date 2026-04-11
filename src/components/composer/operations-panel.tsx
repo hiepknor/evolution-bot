@@ -149,6 +149,14 @@ export function OperationsPanel(): JSX.Element {
     () => templateIssues.filter((issue) => issue.level === 'warning'),
     [templateIssues]
   );
+  const hasTemplateEmptyWarning = useMemo(
+    () => templateWarnings.some((issue) => issue.message.includes('đang trống')),
+    [templateWarnings]
+  );
+  const displayedTemplateWarnings = useMemo(
+    () => templateWarnings.filter((issue) => !issue.message.includes('đang trống')),
+    [templateWarnings]
+  );
   const hasTemplateErrors = templateErrors.length > 0;
 
   const hasContent = Boolean(
@@ -162,6 +170,26 @@ export function OperationsPanel(): JSX.Element {
   const hasConnectionConfig = Boolean(settings?.baseUrl && settings?.apiKey && settings?.instanceName);
   const isConnected = badgeState === 'connected' || settings?.providerMode === 'mock';
   const canSend = hasConnectionConfig && isConnected && hasTargets && hasContent && !hasTemplateErrors;
+  const missingReadinessReasons = useMemo(() => {
+    const reasons: string[] = [];
+    if (!hasConnectionConfig) {
+      reasons.push('thiếu cấu hình');
+      return reasons;
+    }
+    if (!isConnected) {
+      reasons.push('chưa kết nối instance');
+    }
+    if (!hasTargets) {
+      reasons.push('chưa có nhóm hợp lệ');
+    }
+    if (!hasContent) {
+      reasons.push('chưa có nội dung');
+    }
+    if (hasTemplateErrors) {
+      reasons.push('lỗi mẫu nội dung');
+    }
+    return reasons;
+  }, [hasConnectionConfig, hasContent, hasTargets, hasTemplateErrors, isConnected]);
   const executionDisabledReason = useMemo(() => {
     if (campaignStore.stopping) {
       return 'Chiến dịch đang dừng. Vui lòng chờ hệ thống hoàn tất trạng thái trước khi thao tác mới.';
@@ -199,6 +227,35 @@ export function OperationsPanel(): JSX.Element {
     templateErrors
   ]);
   const executionBlocked = executionDisabledReason !== null;
+  const executionBadgeHint = useMemo(() => {
+    if (campaignStore.running || campaignStore.stopping) {
+      return null;
+    }
+    if (!hasConnectionConfig) {
+      return 'thiếu cấu hình';
+    }
+    if (!isConnected) {
+      return 'chưa kết nối';
+    }
+    if (!hasTargets) {
+      return 'chưa có nhóm hợp lệ';
+    }
+    if (!hasContent) {
+      return 'chưa có nội dung';
+    }
+    if (hasTemplateErrors) {
+      return 'lỗi mẫu nội dung';
+    }
+    return null;
+  }, [
+    campaignStore.running,
+    campaignStore.stopping,
+    hasConnectionConfig,
+    hasContent,
+    hasTargets,
+    hasTemplateErrors,
+    isConnected
+  ]);
 
   const warningThresholdEnabled = campaignStore.config.warningThreshold > 0;
   const warningThresholdHit =
@@ -236,10 +293,30 @@ export function OperationsPanel(): JSX.Element {
   }, [campaignStore.config]);
 
   const readiness = [
-    { label: 'Kết nối', ok: isConnected },
-    { label: 'Nhóm nhận', ok: hasTargets },
-    { label: 'Nội dung', ok: hasContent },
-    { label: 'Mẫu hợp lệ', ok: !hasTemplateErrors }
+    {
+      label: 'Kết nối',
+      state: isConnected ? 'đạt' : 'thiếu',
+      variant: (isConnected ? 'success' : 'outline') as 'success' | 'outline'
+    },
+    {
+      label: 'Nhóm nhận',
+      state: hasTargets ? 'đạt' : 'thiếu',
+      variant: (hasTargets ? 'success' : 'outline') as 'success' | 'outline'
+    },
+    {
+      label: 'Nội dung',
+      state: hasContent ? 'đạt' : 'thiếu',
+      variant: (hasContent ? 'success' : 'outline') as 'success' | 'outline'
+    },
+    {
+      label: 'Mẫu hợp lệ',
+      state: hasTemplateErrors ? 'lỗi' : hasTemplateEmptyWarning ? 'trống' : 'đạt',
+      variant: (hasTemplateErrors
+        ? 'destructive'
+        : hasTemplateEmptyWarning
+          ? 'secondary'
+          : 'success') as 'destructive' | 'secondary' | 'success'
+    }
   ];
 
   useEffect(() => {
@@ -473,7 +550,7 @@ export function OperationsPanel(): JSX.Element {
       </CardHeader>
       <CardContent className={panelTokens.cardContent}>
         {campaignStore.duplicateWarning && (
-          <div className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
+          <div className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
             {campaignStore.duplicateWarning}
           </div>
         )}
@@ -482,8 +559,8 @@ export function OperationsPanel(): JSX.Element {
           <div
             className={
               highVolumeRisk
-                ? 'flex items-center gap-2 rounded-md border border-warning/40 bg-warning/10 p-3 text-sm text-warning'
-                : 'flex items-center gap-2 rounded-md border border-primary/30 bg-primary/10 p-3 text-sm text-primary'
+                ? 'flex items-center gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning'
+                : 'flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 p-3 text-sm text-primary'
             }
           >
             <AlertTriangle className="h-4 w-4" />
@@ -493,7 +570,7 @@ export function OperationsPanel(): JSX.Element {
           </div>
         )}
         {permissionBlockedCount > 0 ? (
-          <div className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
+          <div className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
             <p className="font-medium">
               Dự kiến bỏ qua {permissionBlockedCount}/{effectiveTargetCount} nhóm do không có quyền
               gửi.
@@ -510,15 +587,15 @@ export function OperationsPanel(): JSX.Element {
         ) : null}
 
         {hasTemplateErrors ? (
-          <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+          <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
             <p className="font-medium">Mẫu nội dung có lỗi cú pháp.</p>
             <p className="mt-1">{templateErrors[0]?.message}</p>
           </div>
         ) : null}
-        {!hasTemplateErrors && templateWarnings.length > 0 ? (
-          <div className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
+        {!hasTemplateErrors && displayedTemplateWarnings.length > 0 ? (
+          <div className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
             <p className="font-medium">Lưu ý trước khi gửi</p>
-            <p className="mt-1">{templateWarnings[0]?.message}</p>
+            <p className="mt-1">{displayedTemplateWarnings[0]?.message}</p>
           </div>
         ) : null}
 
@@ -528,16 +605,16 @@ export function OperationsPanel(): JSX.Element {
             {readiness.map((item) => (
               <Badge
                 key={item.label}
-                variant={item.ok ? 'success' : 'outline'}
-                className={item.ok ? '' : 'border-border/55 bg-background/40 text-muted-foreground'}
+                variant={item.variant}
+                className={item.variant === 'outline' ? 'border-border/55 bg-background/40 text-muted-foreground' : ''}
               >
-                {item.label}: {item.ok ? 'đạt' : 'thiếu'}
+                {item.label} {item.state}
               </Badge>
             ))}
           </div>
           {!canSend && !campaignStore.running ? (
             <p className="text-sm text-muted-foreground">
-              Thiếu điều kiện gửi: cần cấu hình + kết nối instance, nhóm nhận, nội dung và mẫu hợp lệ.
+              Thiếu điều kiện gửi: {missingReadinessReasons.join(', ') || executionBadgeHint || executionDisabledReason?.replace(/\.$/, '') || 'vui lòng kiểm tra lại điều kiện gửi'}.
             </p>
           ) : null}
         </div>
@@ -564,7 +641,7 @@ export function OperationsPanel(): JSX.Element {
           </div>
         </div>
 
-        <div className="space-y-3 rounded-md border border-border/40 bg-muted/10 p-3">
+        <div className={panelTokens.section}>
           <p className={panelTokens.sectionTitle}>Chiến lược gửi</p>
           <Label className={panelTokens.fieldLabel}>Hồ sơ gửi</Label>
           <div className="grid grid-cols-3 gap-2">
@@ -601,7 +678,7 @@ export function OperationsPanel(): JSX.Element {
         <div className={panelTokens.section}>
           <button
             type="button"
-            className="flex h-9 w-full items-center justify-between rounded-md border border-border/40 bg-background/35 px-3 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-muted/30"
+            className={`${panelTokens.control} flex w-full items-center justify-between border border-border/40 bg-background/35 px-3 text-left font-medium text-muted-foreground transition-colors hover:bg-muted/30`}
             onClick={() => setShowAdvanced((prev) => !prev)}
           >
             <span>Cấu hình nâng cao</span>
@@ -613,7 +690,7 @@ export function OperationsPanel(): JSX.Element {
           </button>
 
           {showAdvanced ? (
-            <div className="space-y-3 pt-1">
+            <div className="space-y-2 pt-1">
               <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-1">
                   <Label className={panelTokens.fieldLabel}>Trễ min (ms)</Label>
@@ -702,7 +779,7 @@ export function OperationsPanel(): JSX.Element {
                 </div>
               </div>
 
-              <div className="space-y-2 rounded-md border border-border/40 bg-background/35 p-3">
+              <div className={panelTokens.section}>
                 <div className="flex items-center justify-between">
                   <Label className={panelTokens.fieldLabel}>Chế độ danh sách cho phép</Label>
                   <Checkbox
@@ -733,7 +810,7 @@ export function OperationsPanel(): JSX.Element {
                         {campaignStore.config.blacklist.map((chatId) => (
                           <div
                             key={chatId}
-                            className="inline-flex min-h-10 max-w-full items-center gap-2 rounded-full border border-border/60 bg-background/50 px-3 py-1.5 text-xs text-foreground"
+                            className="inline-flex min-h-10 max-w-full items-center gap-2 rounded-full border border-border/40 bg-background/50 px-3 py-1.5 text-xs text-foreground"
                           >
                             <span className="min-w-0">
                               <span
@@ -769,25 +846,39 @@ export function OperationsPanel(): JSX.Element {
         </div>
 
         <div className={panelTokens.section}>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-2">
               <p className="text-sm font-semibold text-foreground">Thực thi</p>
-              {campaignStore.running || campaignStore.stopping ? (
-                <Badge variant="warning">
-                  {campaignStopping ? 'đang dừng' : campaignPaused ? 'tạm dừng' : 'đang chạy'}
-                </Badge>
-              ) : (
-                <Badge variant="secondary">nhàn rỗi</Badge>
-              )}
+              <div className="flex items-center gap-2">
+                {executionBadgeHint ? <Badge variant="warning">{executionBadgeHint}</Badge> : null}
+                {campaignStore.running || campaignStore.stopping ? (
+                  <Badge variant="warning">
+                    {campaignStopping ? 'đang dừng' : campaignPaused ? 'tạm dừng' : 'đang chạy'}
+                  </Badge>
+                ) : (
+                  <Badge variant="secondary">sẵn sàng</Badge>
+                )}
+              </div>
             </div>
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span>Đã chọn {selectedCount}</span>
-              <span>Hợp lệ theo danh sách</span>
-              <Badge variant={hasTargets ? 'success' : 'warning'}>{effectiveTargetCount}</Badge>
-              <span>Có quyền gửi</span>
-              <Badge variant={permissionAllowedCount > 0 ? 'success' : 'warning'}>
-                {permissionAllowedCount}
-              </Badge>
+            <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-3">
+              <div className="flex min-h-20 flex-col justify-between rounded-lg border border-border/25 bg-muted/10 px-3 py-2">
+                <p className="text-[11px] text-foreground/70">Đã chọn</p>
+                <p className="text-lg font-semibold leading-none text-foreground">
+                  {selectedCount}
+                </p>
+              </div>
+              <div className="flex min-h-20 flex-col justify-between rounded-lg border border-border/25 bg-muted/10 px-3 py-2">
+                <p className="text-[11px] text-foreground/70">Hợp lệ theo danh sách</p>
+                <p className="text-lg font-semibold leading-none text-foreground">
+                  {effectiveTargetCount}
+                </p>
+              </div>
+              <div className="flex min-h-20 flex-col justify-between rounded-lg border border-border/25 bg-muted/10 px-3 py-2">
+                <p className="text-[11px] text-foreground/70">Có quyền gửi</p>
+                <p className="text-lg font-semibold leading-none text-foreground">
+                  {permissionAllowedCount}
+                </p>
+              </div>
             </div>
           </div>
 
@@ -806,6 +897,7 @@ export function OperationsPanel(): JSX.Element {
                     ? 'Tiếp tục gửi từ vị trí đang tạm dừng'
                     : 'Tạm dừng sau khi xử lý xong nhóm hiện tại'
                 }
+                className={panelTokens.control}
               >
                 {campaignPaused ? 'Tiếp tục' : 'Tạm dừng'}
               </Button>
@@ -813,6 +905,7 @@ export function OperationsPanel(): JSX.Element {
                 variant="destructive"
                 onClick={() => campaignStore.stopCampaign()}
                 disabled={!campaignStore.running || campaignStopping}
+                className={panelTokens.control}
               >
                 {campaignStopping ? 'Đang dừng...' : 'Dừng khẩn cấp'}
               </Button>
@@ -824,6 +917,7 @@ export function OperationsPanel(): JSX.Element {
                 onClick={() => void openConfirmWithValidation(true)}
                 disabled={executionBlocked}
                 title={executionDisabledReason ?? 'Chạy thử chiến dịch'}
+                className={panelTokens.control}
               >
                 Chạy thử
               </Button>
@@ -834,17 +928,15 @@ export function OperationsPanel(): JSX.Element {
                 title={executionDisabledReason ?? `Gửi tới ${effectiveTargetCount} nhóm`}
                 className={
                   executionBlocked
-                    ? 'font-semibold text-muted-foreground'
-                    : 'font-semibold shadow-[0_8px_24px_-16px_hsl(var(--primary))]'
+                    ? `${panelTokens.control} font-semibold text-muted-foreground`
+                    : `${panelTokens.control} font-semibold shadow-[0_8px_24px_-16px_hsl(var(--primary))]`
                 }
               >
                 Gửi
               </Button>
             </div>
           )}
-          {executionDisabledReason && !campaignStore.running ? (
-            <p className="text-sm text-muted-foreground">{executionDisabledReason}</p>
-          ) : campaignStore.running ? (
+          {campaignStore.running ? (
             <p className="text-sm text-muted-foreground">
               {campaignStopping
                 ? 'Hệ thống đang dừng chiến dịch và hoàn tất trạng thái cuối. Vui lòng chờ trong giây lát.'
@@ -859,6 +951,7 @@ export function OperationsPanel(): JSX.Element {
               variant="outline"
               onClick={() => campaignStore.exportLatestCsv()}
               disabled={!campaignStore.activeCampaign}
+              className={panelTokens.control}
             >
               Xuất CSV
             </Button>

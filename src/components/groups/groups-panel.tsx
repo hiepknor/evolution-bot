@@ -61,7 +61,7 @@ const statusFilterLabel: Record<GroupStatusFilterMode, string> = {
   all: 'Tất cả',
   pending: 'Chưa gửi',
   sent: 'Đã gửi',
-  'dry-run-success': 'Chạy thử thành công'
+  'dry-run-success': 'Chạy thử'
 };
 
 const permissionFilterLabel: Record<GroupPermissionFilterMode, string> = {
@@ -102,7 +102,7 @@ const getGroupStatusMeta = (
   }
 
   if (status === 'dry-run-success') {
-    return { label: 'Chạy thử OK', variant: 'success' };
+    return { label: 'Chạy thử', variant: 'success' };
   }
 
   if (status === 'failed') {
@@ -892,10 +892,10 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
           ) : null}
         </div>
 
-        <div className="isolate min-h-0 flex-1 overflow-hidden rounded-md border border-border">
+        <div className="isolate flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border border-border">
           {hasGroups ? (
             <>
-              <div className="space-y-3 border-b border-border/70 bg-card p-3">
+              <div className="space-y-2 border-b border-border/55 bg-card/85 p-3">
                 <div className="space-y-2">
                   <div className="flex flex-wrap items-center gap-2">
                     <div className="relative min-w-[240px] flex-1">
@@ -912,7 +912,7 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
                           setSearchTerm(nextValue);
                         }}
                         placeholder="Tìm theo tên nhóm hoặc chat id"
-                        className={`${panelTokens.control} rounded-md border-border/70 bg-background/70 pl-9 pr-9 placeholder:text-foreground/55`}
+                        className={`${panelTokens.control} border-border/60 bg-background/60 pl-9 pr-9 placeholder:text-foreground/55`}
                       />
                       {searchInputValue.trim().length > 0 ? (
                         <button
@@ -929,12 +929,12 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
                         </button>
                       ) : null}
                     </div>
-                    <div className="inline-flex items-center rounded-md border border-border/60 bg-background/40 p-0.5">
+                    <div className="inline-flex items-center rounded-lg border border-border/45 bg-background/25 p-1">
                       <Button
                         size="sm"
                         variant={statusFilterMode === 'all' ? 'default' : 'ghost'}
                         onClick={() => setStatusFilterMode('all')}
-                        className={`${panelTokens.control} rounded-sm px-3`}
+                        className={`${panelTokens.control} px-3.5 ${statusFilterMode === 'all' ? '' : 'text-muted-foreground hover:text-foreground'}`}
                       >
                         {statusFilterMode === 'all' ? `Tất cả (${filterCounts.status.all})` : 'Tất cả'}
                       </Button>
@@ -942,7 +942,7 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
                         size="sm"
                         variant={statusFilterMode === 'pending' ? 'default' : 'ghost'}
                         onClick={() => setStatusFilterMode('pending')}
-                        className={`${panelTokens.control} rounded-sm px-3`}
+                        className={`${panelTokens.control} px-3.5 ${statusFilterMode === 'pending' ? '' : 'text-muted-foreground hover:text-foreground'}`}
                       >
                         {statusFilterMode === 'pending'
                           ? `Chưa gửi (${filterCounts.status.pending})`
@@ -952,7 +952,7 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
                         size="sm"
                         variant={statusFilterMode === 'sent' ? 'default' : 'ghost'}
                         onClick={() => setStatusFilterMode('sent')}
-                        className={`${panelTokens.control} rounded-sm px-3`}
+                        className={`${panelTokens.control} px-3.5 ${statusFilterMode === 'sent' ? '' : 'text-muted-foreground hover:text-foreground'}`}
                       >
                         {statusFilterMode === 'sent' ? `Đã gửi (${filterCounts.status.sent})` : 'Đã gửi'}
                       </Button>
@@ -960,18 +960,18 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
                         size="sm"
                         variant={statusFilterMode === 'dry-run-success' ? 'default' : 'ghost'}
                         onClick={() => setStatusFilterMode('dry-run-success')}
-                        className={`${panelTokens.control} rounded-sm px-3`}
+                        className={`${panelTokens.control} px-3.5 ${statusFilterMode === 'dry-run-success' ? '' : 'text-muted-foreground hover:text-foreground'}`}
                       >
                         {statusFilterMode === 'dry-run-success'
-                          ? `Chạy thử OK (${filterCounts.status.dryRunSuccess})`
-                          : 'Chạy thử OK'}
+                          ? `Chạy thử (${filterCounts.status.dryRunSuccess})`
+                          : 'Chạy thử'}
                       </Button>
                     </div>
                     <Select
                       value={permissionFilterMode}
                       onValueChange={(value) => setPermissionFilterMode(value as GroupPermissionFilterMode)}
                     >
-                      <SelectTrigger className={`${panelTokens.control} w-[176px] rounded-md border-border/70 bg-background/70`}>
+                      <SelectTrigger className={`${panelTokens.control} w-[176px] border-border/60 bg-background/60`}>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -985,23 +985,26 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
                       size="sm"
                       variant={showAdvancedFilters || hasMinMembersFilter ? 'secondary' : 'outline'}
                       onClick={() => setShowAdvancedFilters((prev) => !prev)}
-                      className={`${panelTokens.control} gap-1.5 rounded-md px-3`}
+                      className={`${panelTokens.control} gap-1.5 px-3`}
                     >
                       <SlidersHorizontal className="h-4 w-4" />
                       Bộ lọc nâng cao
                     </Button>
                   </div>
                   {showAdvancedFilters ? (
-                    <div className="flex flex-wrap items-center gap-2 rounded-md border border-border/40 bg-muted/10 p-2">
-                      <Input
-                        type="number"
-                        min={0}
-                        step={1}
-                        value={minMembersInput}
-                        onChange={(event) => setMinMembersInput(event.target.value)}
-                        placeholder="Tối thiểu thành viên"
-                        className={`${panelTokens.control} w-[180px] rounded-md border-border/70 bg-background/70`}
-                      />
+                    <div className="flex flex-wrap items-end gap-2 rounded-lg border border-border/30 bg-muted/[0.08] p-2">
+                      <div className="space-y-1">
+                        <p className="text-xs font-medium text-muted-foreground">Tối thiểu thành viên</p>
+                        <Input
+                          type="number"
+                          min={0}
+                          step={1}
+                          value={minMembersInput}
+                          onChange={(event) => setMinMembersInput(event.target.value)}
+                          placeholder="Nhập số"
+                          className={`${panelTokens.control} w-[180px] border-border/60 bg-background/60`}
+                        />
+                      </div>
                       {hasMinMembersFilter ? (
                         <Button
                           size="sm"
@@ -1063,7 +1066,7 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
                       <Button
                         size="sm"
                         variant="ghost"
-                        className="h-7 rounded-full px-2.5 text-xs text-muted-foreground"
+                        className="rounded-full px-2.5 text-xs text-muted-foreground"
                         onClick={() => {
                           clearSearchInput();
                           setStatusFilterMode('all');
@@ -1076,7 +1079,7 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
                     </div>
                   ) : null}
                 </div>
-                <div className="flex flex-wrap items-center gap-2 rounded-md border border-border/40 bg-muted/10 p-2">
+                <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border/30 bg-muted/[0.08] p-2">
                   <div className="text-sm text-foreground/85">
                     Chọn nhanh (trong bộ lọc hiện tại): {selectedVisibleCount} đã chọn
                   </div>
@@ -1092,8 +1095,8 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
                   <div className="flex flex-wrap items-center gap-2">
                     <Button
                       size="sm"
-                      variant="secondary"
-                      className={`${panelTokens.control} rounded-full px-3`}
+                      variant="outline"
+                      className={`${panelTokens.control} rounded-full border-border/55 bg-background/35 px-3 text-foreground/90 hover:bg-muted/35`}
                       onClick={() => selectAllVisible(selectableVisibleIds)}
                       disabled={selectableVisibleIds.length === 0}
                     >
@@ -1101,8 +1104,8 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
                     </Button>
                     <Button
                       size="sm"
-                      variant="secondary"
-                      className={`${panelTokens.control} rounded-full px-3`}
+                      variant="outline"
+                      className={`${panelTokens.control} rounded-full border-border/55 bg-background/35 px-3 text-foreground/90 hover:bg-muted/35`}
                       onClick={() => deselectAllVisible(selectableVisibleIds)}
                       disabled={selectableVisibleIds.length === 0}
                     >
@@ -1110,8 +1113,8 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
                     </Button>
                     <Button
                       size="sm"
-                      variant="secondary"
-                      className={`${panelTokens.control} rounded-full px-3`}
+                      variant="outline"
+                      className={`${panelTokens.control} rounded-full border-border/55 bg-background/35 px-3 text-foreground/90 hover:bg-muted/35`}
                       onClick={() => invertSelectionVisible(selectableVisibleIds)}
                       disabled={selectableVisibleIds.length === 0}
                     >
@@ -1157,7 +1160,7 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
                     </th>
                     <th className={`${stickyHeaderCellClass} whitespace-nowrap text-left`}>Quyền gửi</th>
                     <th className={`${stickyHeaderCellClass} whitespace-nowrap text-center`}>Hành động</th>
-                    <th className={`${stickyHeaderCellClass} whitespace-nowrap text-center`}>Trạng thái</th>
+                    <th className={`${stickyHeaderCellClass} whitespace-nowrap text-left`}>Trạng thái</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1282,8 +1285,8 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
                               {listActionLabel}
                             </Button>
                           </td>
-                          <td className="px-3 py-2.5 align-middle text-center">
-                            <Badge variant={statusMeta.variant} className="whitespace-nowrap">
+                          <td className="px-3 py-2.5 align-middle text-left">
+                            <Badge variant={statusMeta.variant} className="whitespace-nowrap justify-start">
                               {statusMeta.label}
                             </Badge>
                           </td>

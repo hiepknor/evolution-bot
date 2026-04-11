@@ -454,7 +454,7 @@ export function ComposerPanel(): JSX.Element {
       </CardHeader>
       <CardContent className={panelTokens.cardContent}>
         {composer.contentSource ? (
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-primary/35 bg-primary/10 p-3 text-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-primary/35 bg-primary/10 p-3 text-sm">
             <span className="text-primary-foreground/90">
               Đang chỉnh sửa từ: <strong>{composer.contentSource.campaignName}</strong> •{' '}
               {dayjs(composer.contentSource.loadedAt).format('HH:mm:ss')}
@@ -463,7 +463,7 @@ export function ComposerPanel(): JSX.Element {
               type="button"
               size="sm"
               variant="outline"
-              className="h-9 px-3 text-sm"
+              className={`${panelTokens.control} px-3`}
               onClick={() => composer.clearContentSource()}
             >
               Bỏ liên kết
@@ -473,8 +473,8 @@ export function ComposerPanel(): JSX.Element {
         <div className="space-y-2">
           <h3 className={panelTokens.sectionTitle}>Media</h3>
           <div
-            className={`space-y-2 rounded-md border bg-muted/10 p-3 transition-colors ${
-              isMediaDropActive ? 'border-primary/55 bg-primary/5' : 'border-border/40'
+            className={`space-y-2 rounded-lg border bg-muted/[0.08] p-3 transition-colors ${
+              isMediaDropActive ? 'border-primary/55 bg-primary/5' : 'border-border/30'
             }`}
             onDragOver={(event) => {
               event.preventDefault();
@@ -499,14 +499,14 @@ export function ComposerPanel(): JSX.Element {
               <Button
                 type="button"
                 variant="outline"
-                className="h-9 px-3"
+                className={`${panelTokens.control} px-3`}
                 onClick={pickImage}
                 disabled={isOptimizingImage}
               >
                 {isOptimizingImage ? 'Đang tối ưu...' : composer.imagePath ? 'Thay ảnh' : 'Chọn ảnh'}
               </Button>
               <div
-                className="relative min-w-0 flex-1 rounded-md border border-border/50 bg-background/35 px-3 py-2 pr-11"
+                className="relative min-w-0 flex-1 rounded-lg border border-border/40 bg-background/35 px-3 py-2 pr-11"
                 title={composer.imageName ?? ''}
               >
                 {composer.imageName ? (
@@ -568,7 +568,7 @@ export function ComposerPanel(): JSX.Element {
                 </SelectContent>
               </Select>
               {brokenRecentFiles.length > 0 ? (
-                <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-warning/35 bg-warning/10 p-2 text-sm text-warning">
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-warning/35 bg-warning/10 p-2 text-sm text-warning">
                   <span>
                     Có {brokenRecentFiles.length} tệp lịch sử không còn truy cập được.
                   </span>
@@ -576,7 +576,7 @@ export function ComposerPanel(): JSX.Element {
                     type="button"
                     size="sm"
                     variant="outline"
-                    className="h-9 border-warning/40 px-3 text-sm text-warning hover:bg-warning/20"
+                    className={`${panelTokens.control} border-warning/40 px-3 text-warning hover:bg-warning/20`}
                     onClick={() => composer.removeRecentFiles(brokenRecentFiles)}
                   >
                     Gỡ tệp lỗi
@@ -585,17 +585,17 @@ export function ComposerPanel(): JSX.Element {
               ) : null}
             </div>
             {mediaOptimizationNote ? (
-              <div className="rounded-md border border-success/35 bg-success/10 p-2 text-sm text-success">
+              <div className="rounded-lg border border-success/35 bg-success/10 p-2 text-sm text-success">
                 {mediaOptimizationNote}
               </div>
             ) : null}
             {mediaError ? (
-              <div className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-sm text-destructive">
+              <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-2 text-sm text-destructive">
                 {mediaError}
               </div>
             ) : null}
             {mediaMeta ? (
-              <div className="rounded-md bg-muted/10 p-2">
+              <div className="rounded-lg bg-muted/[0.08] p-2">
                 <div className="flex items-center gap-2">
                   <div className="min-w-0 flex-1 space-y-1">
                     <div className="flex flex-wrap items-center gap-2">
@@ -618,7 +618,7 @@ export function ComposerPanel(): JSX.Element {
                 </div>
               </div>
             ) : (
-              <div className="rounded-md bg-muted/10 p-2 text-sm text-muted-foreground">
+              <div className="rounded-lg bg-muted/[0.08] p-2 text-sm text-muted-foreground">
                 Chưa có tệp ảnh được chọn.
               </div>
             )}
@@ -627,7 +627,7 @@ export function ComposerPanel(): JSX.Element {
 
         <div className="space-y-2">
           <h3 className={panelTokens.sectionTitle}>Mẫu nội dung</h3>
-          <div className="rounded-md border border-border/40 bg-muted/10 p-3">
+          <div className="rounded-lg border border-border/30 bg-muted/[0.08] p-3">
             <div className="flex flex-wrap items-center gap-2 whitespace-normal">
               <span className="text-xs text-muted-foreground">Chèn biến:</span>
               {TEMPLATE_PLACEHOLDERS.map((key) => (
@@ -652,24 +652,22 @@ export function ComposerPanel(): JSX.Element {
             rows={6}
             value={composer.captionTemplate}
             onChange={(e) => composer.setCaptionTemplate(e.target.value)}
-            placeholder="Dùng biến: {group_name}, {index}, {members}, {date}, {rand_tag}"
+            placeholder="Nhập mẫu nội dung để gửi..."
           />
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>{composer.captionTemplate.length} ký tự</span>
-            <span>{lineCount} dòng</span>
+          <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+            <div className="flex items-center gap-2">
+              <span>{composer.captionTemplate.length} ký tự</span>
+              <span>{lineCount} dòng</span>
+            </div>
+            {canShowTemplateSuccess ? <Badge variant="success">Hợp lệ</Badge> : null}
           </div>
           {isImageOnlyDraft ? (
-            <div className="space-y-1.5 rounded-md border border-border/60 bg-muted/20 p-2">
-              <div className="flex items-start gap-2">
-                <Badge variant="secondary">Thông tin</Badge>
-                <p className="pt-0.5 text-xs text-muted-foreground">
-                  Bạn đang để trống nội dung chữ. Bản tin hiện sẽ gửi ảnh là chính.
-                </p>
-              </div>
-            </div>
+            <p className="text-xs text-muted-foreground">
+              Đang để trống nội dung chữ. Bản tin hiện sẽ gửi ảnh là chính.
+            </p>
           ) : null}
           {shownTemplateIssues.length > 0 ? (
-            <div className="space-y-1.5 rounded-md border border-border/60 bg-muted/20 p-2">
+            <div className="space-y-1.5 rounded-lg border border-border/40 bg-muted/20 p-2">
               {shownTemplateIssues.map((issue, index) => (
                 <div key={`${issue.level}-${index}`} className="flex items-start gap-2">
                   <Badge variant={issue.level === 'error' ? 'destructive' : 'warning'}>
@@ -693,14 +691,10 @@ export function ComposerPanel(): JSX.Element {
                 </div>
               ) : null}
             </div>
-          ) : canShowTemplateSuccess ? (
-            <div className="rounded-md border border-success/30 bg-success/10 p-2 text-sm text-success">
-              Mẫu nội dung hợp lệ.
-            </div>
           ) : null}
 
           {contentQualityWarnings.length > 0 ? (
-            <div className="space-y-1.5 rounded-md border border-warning/35 bg-warning/10 p-2">
+            <div className="space-y-1.5 rounded-lg border border-warning/35 bg-warning/10 p-2">
               <p className="text-sm font-medium text-warning">Cảnh báo chất lượng nội dung</p>
               {contentQualityWarnings.map((warning) => (
                 <p key={warning} className="text-sm text-warning">
@@ -710,11 +704,11 @@ export function ComposerPanel(): JSX.Element {
             </div>
           ) : null}
 
-          <div className="space-y-2 rounded-md border border-border/40 bg-muted/10 p-3">
+          <div className={panelTokens.section}>
             <div className="flex items-center justify-between gap-2">
               <button
                 type="button"
-                className="flex h-9 min-w-0 flex-1 items-center justify-between rounded-md border border-border/60 bg-muted/20 px-3 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-muted/35"
+                className={`${panelTokens.control} flex min-w-0 flex-1 items-center justify-between border border-border/50 bg-muted/20 px-3 text-left font-medium text-muted-foreground transition-colors hover:bg-muted/35`}
                 onClick={() => setShowAdvancedContent((prev) => !prev)}
               >
                 <span>Nội dung nâng cao</span>
@@ -777,14 +771,14 @@ export function ComposerPanel(): JSX.Element {
             )}
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/40 bg-muted/10 p-3">
+          <div className={panelTokens.section}>
             <span className="text-sm text-muted-foreground">Bản nháp lưu tự động trên máy này.</span>
             <div className="flex items-center gap-2">
               <Button
                 type="button"
                 size="sm"
                 variant="outline"
-                className="h-9 px-3 text-sm"
+                className={`${panelTokens.control} px-3`}
                 onClick={() => composer.reset()}
               >
                 Khôi phục mặc định
@@ -793,7 +787,7 @@ export function ComposerPanel(): JSX.Element {
                 type="button"
                 size="sm"
                 variant="outline"
-                className="h-9 border-destructive/40 px-3 text-sm text-destructive hover:bg-destructive/10"
+                className={`${panelTokens.control} border-border/50 px-3 text-muted-foreground hover:bg-muted/20 hover:text-foreground`}
                 onClick={() => setConfirmClearDraftOpen(true)}
               >
                 Xóa bản nháp đã lưu

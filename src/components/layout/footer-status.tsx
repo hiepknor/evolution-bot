@@ -151,7 +151,7 @@ export function FooterStatus(): JSX.Element {
       </div>
       <div className="grid grid-cols-1 gap-x-4 gap-y-2 text-xs text-foreground/90 sm:grid-cols-2 lg:grid-cols-7">
         <div>Đã gửi thật: {progress?.sent ?? 0}</div>
-        <div>Chạy thử OK: {progress?.dryRunSuccess ?? 0}</div>
+        <div>Chạy thử: {progress?.dryRunSuccess ?? 0}</div>
         <div>Lỗi: {progress?.failed ?? 0}</div>
         <div>Bỏ qua: {progress?.skipped ?? 0}</div>
         <div>{finishedMode ? `Thời lượng: ${durationDisplay}` : `ETA (ước tính): ${etaDisplay}`}</div>

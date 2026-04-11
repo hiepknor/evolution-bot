@@ -43,6 +43,13 @@ const filterShortLabel: Record<LogFilter, string> = {
   error: 'Lỗi'
 };
 
+const levelItemTone: Record<string, string> = {
+  info: 'border-border/35 bg-background/35',
+  success: 'border-success/25 bg-success/5',
+  warn: 'border-warning/25 bg-warning/5',
+  error: 'border-destructive/25 bg-destructive/5'
+};
+
 interface ActivityLogPanelProps {
   onRequestClose?: () => void;
   className?: string;
@@ -296,7 +303,7 @@ export function ActivityLogPanel({ onRequestClose, className }: ActivityLogPanel
             type="button"
             variant="ghost"
             size="icon"
-            className="h-9 w-9 shrink-0"
+            className={cn('shrink-0', panelTokens.control)}
             aria-label="Đóng nhật ký hoạt động"
             onClick={onRequestClose}
           >
@@ -306,7 +313,7 @@ export function ActivityLogPanel({ onRequestClose, className }: ActivityLogPanel
       </CardHeader>
       <CardContent className={cn('flex min-h-0 flex-1 flex-col overflow-hidden', panelTokens.cardContent)}>
         {running && queueProgress ? (
-          <div className="rounded-md border border-primary/30 bg-primary/10 p-3">
+          <div className="rounded-lg border border-primary/30 bg-primary/10 p-3">
             <div className="mb-1 flex items-center justify-between">
               <Badge variant="secondary">Thông tin</Badge>
               <span className="text-xs text-primary">{runningEtaLabel}</span>
@@ -320,10 +327,10 @@ export function ActivityLogPanel({ onRequestClose, className }: ActivityLogPanel
           <div
             className={
               recentRunSnapshot.status === 'completed'
-                ? 'rounded-md border border-emerald-400/30 bg-emerald-500/10 p-3'
+                ? 'rounded-lg border border-emerald-400/30 bg-emerald-500/10 p-3'
                 : recentRunSnapshot.status === 'failed'
-                  ? 'rounded-md border border-destructive/40 bg-destructive/10 p-3'
-                  : 'rounded-md border border-warning/40 bg-warning/10 p-3'
+                  ? 'rounded-lg border border-destructive/40 bg-destructive/10 p-3'
+                  : 'rounded-lg border border-warning/40 bg-warning/10 p-3'
             }
           >
             <div className="mb-1 flex items-center justify-between">
@@ -364,7 +371,7 @@ export function ActivityLogPanel({ onRequestClose, className }: ActivityLogPanel
                 setSearchInputValue(nextValue);
                 setSearchTerm(nextValue);
               }}
-              className={cn('rounded-md border-border/70 bg-background/40 pl-9 pr-9', panelTokens.control)}
+              className={cn('border-border/60 bg-background/40 pl-9 pr-9', panelTokens.control)}
               placeholder="Tìm theo nội dung log"
             />
             {searchInputValue.trim().length > 0 ? (
@@ -385,7 +392,7 @@ export function ActivityLogPanel({ onRequestClose, className }: ActivityLogPanel
           </div>
           <div className="flex items-center gap-2">
             <div
-              className="min-w-0 flex-1 overflow-x-auto rounded-md border border-border/70 bg-background/35 p-0.5"
+              className="min-w-0 flex-1 overflow-x-auto rounded-lg border border-border/50 bg-background/30 p-1"
               role="tablist"
               aria-label="Bộ lọc mức log"
             >
@@ -397,7 +404,7 @@ export function ActivityLogPanel({ onRequestClose, className }: ActivityLogPanel
                     role="tab"
                     aria-selected={filter === key}
                     aria-pressed={filter === key}
-                    className={`inline-flex h-9 min-w-[112px] shrink-0 items-center justify-center whitespace-nowrap rounded-md px-3 py-0 text-sm font-medium leading-none tabular-nums transition-colors ${
+                    className={`inline-flex ${panelTokens.control} min-w-[112px] shrink-0 items-center justify-center whitespace-nowrap px-3 py-0 font-medium leading-none tabular-nums transition-colors ${
                       filter === key
                         ? 'bg-primary text-primary-foreground'
                         : 'text-foreground/85 hover:bg-muted/50'
@@ -413,7 +420,7 @@ export function ActivityLogPanel({ onRequestClose, className }: ActivityLogPanel
             <Button
               size="icon"
               variant="outline"
-              className={cn('w-9 shrink-0 rounded-md', panelTokens.control)}
+              className={cn('shrink-0 border-border/60', panelTokens.control)}
               title="Xóa toàn bộ nhật ký"
               onClick={() => {
                 clearUiLogs();
@@ -424,15 +431,21 @@ export function ActivityLogPanel({ onRequestClose, className }: ActivityLogPanel
             </Button>
           </div>
         </div>
-        <div className="flex-1 space-y-2 overflow-auto rounded-md border border-border/55 bg-muted/10 p-3">
+        <div className="flex-1 space-y-2 overflow-auto rounded-lg border border-border/35 bg-muted/[0.08] p-3">
           {filteredLogs.length === 0 ? (
             <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
               {logs.length > 0 ? 'Không có log phù hợp bộ lọc hiện tại.' : 'Chưa có log nào.'}
             </div>
           ) : (
             filteredLogs.map((log) => (
-              <div key={log.id} className="rounded-md bg-card/30 p-3 text-sm">
-                <div className="mb-1 flex items-center justify-between">
+              <article
+                key={log.id}
+                className={cn(
+                  'rounded-lg border p-3 text-sm transition-colors',
+                  levelItemTone[log.level] ?? levelItemTone.info
+                )}
+              >
+                <div className="mb-1.5 flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     {filter === 'all' ? (
                       <Badge variant={levelVariant[log.level] ?? 'secondary'}>
@@ -446,7 +459,7 @@ export function ActivityLogPanel({ onRequestClose, className }: ActivityLogPanel
                   <span className="text-xs text-muted-foreground">{dayjs(log.createdAt).format('HH:mm:ss')}</span>
                 </div>
                 <p className="leading-5 text-foreground/95">{localizeLogMessage(log.message)}</p>
-              </div>
+              </article>
             ))
           )}
         </div>

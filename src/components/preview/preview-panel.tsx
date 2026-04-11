@@ -153,7 +153,7 @@ export function PreviewPanel({ mode = 'standalone' }: PreviewPanelProps): JSX.El
           embedded ? '' : 'min-h-0 flex-1 overflow-hidden'
         )}
       >
-        <div className="space-y-2 rounded-md border border-border/60 bg-muted/10 p-3 text-sm leading-5 text-muted-foreground">
+        <div className="space-y-2 rounded-lg border border-border/30 bg-muted/[0.08] p-3 text-sm leading-5 text-muted-foreground">
           <div className="truncate text-sm" title={selectedGroupTitle}>
             Nhóm: {selectedGroupCompactLine}
           </div>
@@ -178,14 +178,14 @@ export function PreviewPanel({ mode = 'standalone' }: PreviewPanelProps): JSX.El
         >
           <div
             className={cn(
-              'flex flex-col overflow-hidden rounded-md border border-border/55 bg-muted/10 p-3',
+              'flex flex-col overflow-hidden rounded-lg border border-border/30 bg-muted/[0.08] p-3',
               embedded ? 'min-h-[240px]' : 'h-full min-h-0'
             )}
           >
             <div className={cn(panelTokens.sectionTitle, 'mb-2 text-muted-foreground')}>Ảnh xem trước</div>
             <div
               className={cn(
-                'flex items-start justify-center overflow-hidden rounded-md bg-background/30 p-3',
+                'flex items-start justify-center overflow-hidden rounded-lg bg-background/30 p-3',
                 embedded ? 'min-h-[200px]' : 'min-h-0 flex-1'
               )}
             >
@@ -198,7 +198,7 @@ export function PreviewPanel({ mode = 'standalone' }: PreviewPanelProps): JSX.El
                   onLoad={() => setImageLoadFailed(false)}
                 />
               ) : (
-                <div className="flex h-full w-full flex-col items-center justify-center rounded-md border border-dashed border-border/60 text-sm text-muted-foreground">
+                <div className="flex h-full w-full flex-col items-center justify-center rounded-lg border border-dashed border-border/60 text-sm text-muted-foreground">
                   <span>{composer.imagePath ? 'Không thể xem trước ảnh' : 'Chưa chọn ảnh'}</span>
                   {composer.imagePath ? (
                     <span className="mt-1 max-w-full truncate px-2 font-mono text-xs">
@@ -215,7 +215,7 @@ export function PreviewPanel({ mode = 'standalone' }: PreviewPanelProps): JSX.El
                       type="button"
                       size="sm"
                       variant="outline"
-                      className="mt-2 h-8 px-3 text-sm"
+                      className={`mt-2 ${panelTokens.control} px-3`}
                       onClick={() => {
                         setImageLoadFailed(false);
                         setImageLoadError(null);
@@ -232,7 +232,7 @@ export function PreviewPanel({ mode = 'standalone' }: PreviewPanelProps): JSX.El
 
           <div
             className={cn(
-              'flex flex-col overflow-hidden rounded-md border border-border/55 bg-muted/10 p-3',
+              'flex flex-col overflow-hidden rounded-lg border border-border/30 bg-muted/[0.08] p-3',
               embedded ? 'min-h-[240px]' : 'h-full min-h-0'
             )}
           >
