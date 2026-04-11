@@ -175,7 +175,7 @@ describe('evolution provider', () => {
       const url = String(input);
       const method = String(init?.method ?? 'GET').toUpperCase();
 
-      if (url.includes('/chat/findChats/instance-a') && method === 'POST') {
+      if (url.includes('/group/fetchAllGroups/instance-a?getParticipants=false') && method === 'GET') {
         return {
           ok: true,
           text: async () =>

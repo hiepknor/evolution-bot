@@ -617,12 +617,9 @@ export class EvolutionProvider implements MessagingProvider {
         path: `/group/fetchAllGroups/${encodedInstanceName}`,
         method: 'POST',
         body: { getParticipants: false },
-        timeoutMs: 60_000
-      },
-      { path: `/group/findGroups/${encodedInstanceName}`, timeoutMs: 30_000 },
-      { path: `/group/findGroups/${encodedInstanceName}`, method: 'POST', body: {}, timeoutMs: 30_000 },
-      { path: `/chat/findChats/${encodedInstanceName}`, timeoutMs: 20_000 },
-      { path: `/chat/findChats/${encodedInstanceName}`, method: 'POST', body: {}, timeoutMs: 20_000 }
+        timeoutMs: 60_000,
+        stopWhenGroupsFound: true
+      }
     ];
 
     let lastError: unknown;

@@ -253,6 +253,15 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
         apiKey: currentSettings.apiKey
       });
 
+      if (currentSettings.providerMode !== 'mock') {
+        const connectionState = await provider.getConnectionState(currentSettings.instanceName);
+        if (!connectionState.isConnected) {
+          throw new Error(
+            `Instance "${currentSettings.instanceName}" chưa sẵn sàng (state: ${connectionState.state}). Vui lòng mở cài đặt kết nối và thử lại.`
+          );
+        }
+      }
+
       const groupsStoreState = useGroupsStore.getState();
       const selectedBefore = Array.from(groupsStoreState.selectedIds);
       const previousGroups = groupsStoreState.groups;
