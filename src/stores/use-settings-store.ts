@@ -3,6 +3,7 @@ import type { ConnectionBadgeState, ConnectionSettings } from '@/lib/types/domai
 import { settingsRepo } from '@/lib/db/repositories';
 import { createProvider } from '@/lib/providers/provider-factory';
 import { useActivityLogStore } from '@/stores/use-activity-log-store';
+import { useGroupsStore } from '@/stores/use-groups-store';
 
 const readSettingsFromEnv = (): Pick<
   ConnectionSettings,
@@ -105,17 +106,36 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 
   save: async (input) => {
     set({ loading: true });
+    const previousSettings = get().settings;
     const saved = await settingsRepo.upsert(input);
+    const connectionChanged =
+      !previousSettings ||
+      previousSettings.baseUrl !== saved.baseUrl ||
+      previousSettings.apiKey !== saved.apiKey ||
+      previousSettings.instanceName !== saved.instanceName ||
+      previousSettings.providerMode !== saved.providerMode;
+
+    if (connectionChanged) {
+      await useGroupsStore.getState().clearCache();
+    }
+
     set({
       settings: saved,
-      connectedInstanceName: saved.instanceName,
+      connectedInstanceName: null,
+      badgeState: 'disconnected',
       loading: false,
-      statusMessage: 'Đã lưu cấu hình'
+      statusMessage: connectionChanged ? 'Đã lưu cấu hình, cần kết nối lại' : 'Đã lưu cấu hình'
     });
     useActivityLogStore.getState().pushUiLog({
       level: 'success',
       message: `Đã lưu cấu hình kết nối vào DB cho instance ${saved.instanceName}`
     });
+    if (connectionChanged) {
+      useActivityLogStore.getState().pushUiLog({
+        level: 'info',
+        message: 'Đã đổi cấu hình kết nối, cache nhóm đã được làm mới'
+      });
+    }
   },
 
   testConnection: async (input) => {

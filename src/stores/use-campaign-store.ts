@@ -300,6 +300,10 @@ export const useCampaignStore = create<CampaignStore>((set, get) => ({
     }
 
     const selectedGroups = groups.filter((group) => selectedIds.includes(group.chatId));
+    if (selectedGroups.length === 0) {
+      throw new Error('Nhóm đã chọn không còn hợp lệ. Vui lòng đồng bộ lại danh sách nhóm.');
+    }
+
     const configuredSet = new Set(get().config.blacklist.map((chatId) => normalizeChatId(chatId)));
     const allowedGroups = get().config.whitelistMode
       ? selectedGroups.filter((group) => configuredSet.has(normalizeChatId(group.chatId)))
