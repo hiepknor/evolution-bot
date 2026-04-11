@@ -16,7 +16,6 @@ import {
   applyGroupFilters,
   createGroupStatusMap,
   countGroupsByMode,
-  createSentStatusMap,
   parseMinMembersInput,
   resolveGroupPermissionState,
   type GroupPermissionState,
@@ -42,7 +41,8 @@ const selectedCheckboxClass =
 const statusFilterLabel: Record<GroupStatusFilterMode, string> = {
   all: 'Tất cả',
   pending: 'Chưa gửi',
-  sent: 'Đã gửi'
+  sent: 'Đã gửi',
+  'dry-run-success': 'Chạy thử thành công'
 };
 
 const permissionFilterLabel: Record<GroupPermissionFilterMode, string> = {
@@ -110,10 +110,8 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
   const [copiedChatId, setCopiedChatId] = useState<string | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const tableViewportRef = useRef<HTMLDivElement | null>(null);
-  const stickyFiltersRef = useRef<HTMLDivElement | null>(null);
   const rowRefs = useRef<Map<string, HTMLTableRowElement>>(new Map());
   const lastAutoScrolledChatIdRef = useRef<string | null>(null);
-  const [tableHeaderTopOffset, setTableHeaderTopOffset] = useState(0);
 
   const {
     groups,
@@ -131,7 +129,6 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
 
   const minMembers = useMemo(() => parseMinMembersInput(minMembersInput), [minMembersInput]);
   const groupStatusByChatId = useMemo(() => createGroupStatusMap(targets), [targets]);
-  const sentStatusByChatId = useMemo(() => createSentStatusMap(targets), [targets]);
   const filteredForCounts = useMemo(
     () =>
       applyGroupFilters({
@@ -140,9 +137,9 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
         minMembers,
         statusFilterMode: 'all',
         permissionFilterMode: 'all',
-        sentStatusByChatId
+        statusByChatId: groupStatusByChatId
       }),
-    [groups, minMembers, searchTerm, sentStatusByChatId]
+    [groupStatusByChatId, groups, minMembers, searchTerm]
   );
   const filtered = useMemo(
     () =>
@@ -152,25 +149,22 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
         minMembers,
         statusFilterMode,
         permissionFilterMode,
-        sentStatusByChatId
+        statusByChatId: groupStatusByChatId
       }),
-    [groups, minMembers, permissionFilterMode, searchTerm, sentStatusByChatId, statusFilterMode]
+    [groupStatusByChatId, groups, minMembers, permissionFilterMode, searchTerm, statusFilterMode]
   );
-  const selectableVisibleIds = useMemo(
-    () =>
-      filtered
-        .filter((group) => resolveGroupPermissionState(group) !== 'blocked')
-        .map((group) => group.chatId),
+  const visibleChatIds = useMemo(
+    () => filtered.map((group) => group.chatId),
     [filtered]
   );
 
   const allVisibleSelected =
-    selectableVisibleIds.length > 0 && selectableVisibleIds.every((chatId) => selectedIds.has(chatId));
-  const selectedVisibleCount = selectableVisibleIds.filter((chatId) => selectedIds.has(chatId)).length;
-  const blockedVisibleCount = filtered.length - selectableVisibleIds.length;
+    visibleChatIds.length > 0 && visibleChatIds.every((chatId) => selectedIds.has(chatId));
+  const selectedVisibleCount = visibleChatIds.filter((chatId) => selectedIds.has(chatId)).length;
+  const blockedVisibleCount = filtered.filter((group) => resolveGroupPermissionState(group) === 'blocked').length;
   const filterCounts = useMemo(
-    () => countGroupsByMode(filteredForCounts, sentStatusByChatId),
-    [filteredForCounts, sentStatusByChatId]
+    () => countGroupsByMode(filteredForCounts, groupStatusByChatId),
+    [filteredForCounts, groupStatusByChatId]
   );
   const hasSearchFilter = searchTerm.trim().length > 0;
   const hasMinMembersFilter = minMembers !== null;
@@ -454,29 +448,6 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
     }
   }, [running]);
 
-  useEffect(() => {
-    const stickyFiltersElement = stickyFiltersRef.current;
-    if (!stickyFiltersElement) {
-      setTableHeaderTopOffset(0);
-      return;
-    }
-
-    const syncHeaderOffset = () => {
-      setTableHeaderTopOffset(stickyFiltersElement.offsetHeight);
-    };
-
-    syncHeaderOffset();
-
-    if (typeof ResizeObserver !== 'undefined') {
-      const observer = new ResizeObserver(() => syncHeaderOffset());
-      observer.observe(stickyFiltersElement);
-      return () => observer.disconnect();
-    }
-
-    window.addEventListener('resize', syncHeaderOffset);
-    return () => window.removeEventListener('resize', syncHeaderOffset);
-  }, []);
-
   return (
     <Card className="flex h-full min-h-0 flex-col overflow-hidden border-border/80 bg-card/80 backdrop-blur-sm">
       <CardHeader className={`space-y-1 border-b border-border/70 ${panelTokens.cardHeader}`}>
@@ -563,12 +534,11 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
           ) : null}
         </div>
 
-        <div ref={tableViewportRef} className="min-h-0 flex-1 overflow-auto rounded-md border border-border">
+        <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border border-border">
           {hasGroups ? (
             <>
               <div
-                ref={stickyFiltersRef}
-                className="sticky top-0 z-30 space-y-3 border-b border-border/55 bg-card/95 p-3 backdrop-blur-sm"
+                className="space-y-3 border-b border-border/55 bg-card/95 p-3"
               >
                 <div className="space-y-3">
                   <div className="flex flex-wrap items-center gap-3">
@@ -608,6 +578,16 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
                         className={`${panelTokens.control} rounded-sm px-3`}
                       >
                         {statusFilterMode === 'sent' ? `Đã gửi (${filterCounts.status.sent})` : 'Đã gửi'}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={statusFilterMode === 'dry-run-success' ? 'default' : 'ghost'}
+                        onClick={() => setStatusFilterMode('dry-run-success')}
+                        className={`${panelTokens.control} rounded-sm px-3`}
+                      >
+                        {statusFilterMode === 'dry-run-success'
+                          ? `Chạy thử OK (${filterCounts.status.dryRunSuccess})`
+                          : 'Chạy thử OK'}
                       </Button>
                     </div>
                     <Select
@@ -725,7 +705,7 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
                   </div>
                   {blockedVisibleCount > 0 ? (
                     <Badge variant="warning" className="h-6 rounded-full px-2 text-xs">
-                      {blockedVisibleCount} nhóm bị khóa chọn
+                      {blockedVisibleCount} nhóm có thể bị bỏ qua khi gửi
                     </Badge>
                   ) : null}
                   <div className="flex flex-wrap items-center gap-3">
@@ -733,8 +713,8 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
                       size="sm"
                       variant="secondary"
                       className={`${panelTokens.control} rounded-full px-3`}
-                      onClick={() => selectAllVisible(selectableVisibleIds)}
-                      disabled={selectableVisibleIds.length === 0}
+                      onClick={() => selectAllVisible(visibleChatIds)}
+                      disabled={visibleChatIds.length === 0}
                     >
                       Chọn tất cả
                     </Button>
@@ -742,8 +722,8 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
                       size="sm"
                       variant="secondary"
                       className={`${panelTokens.control} rounded-full px-3`}
-                      onClick={() => deselectAllVisible(selectableVisibleIds)}
-                      disabled={selectableVisibleIds.length === 0}
+                      onClick={() => deselectAllVisible(visibleChatIds)}
+                      disabled={visibleChatIds.length === 0}
                     >
                       Bỏ chọn
                     </Button>
@@ -751,8 +731,8 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
                       size="sm"
                       variant="secondary"
                       className={`${panelTokens.control} rounded-full px-3`}
-                      onClick={() => invertSelectionVisible(selectableVisibleIds)}
-                      disabled={selectableVisibleIds.length === 0}
+                      onClick={() => invertSelectionVisible(visibleChatIds)}
+                      disabled={visibleChatIds.length === 0}
                     >
                       Đảo chọn
                     </Button>
@@ -760,124 +740,125 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
                 </div>
               </div>
 
-              <table className="w-full table-fixed border-separate border-spacing-0 text-sm leading-5">
-                <colgroup>
-                  <col className="w-[4%]" />
-                  <col className="w-[34%]" />
-                  <col className="w-[9%]" />
-                  <col className="w-[24%]" />
-                  <col className="w-[16%]" />
-                  <col className="w-[13%]" />
-                </colgroup>
-                <thead>
-                  <tr>
-                    <th className="sticky z-20 bg-muted/95 p-2 text-left" style={{ top: tableHeaderTopOffset }}>
-                      <Checkbox
-                        className={selectedCheckboxClass}
-                        checked={allVisibleSelected}
-                        disabled={selectableVisibleIds.length === 0}
-                        onCheckedChange={(checked) => {
-                          if (checked) {
-                            selectAllVisible(selectableVisibleIds);
-                            return;
-                          }
-                          deselectAllVisible(selectableVisibleIds);
-                        }}
-                      />
-                    </th>
-                    <th className="sticky z-20 bg-muted/95 p-2 text-left" style={{ top: tableHeaderTopOffset }}>Nhóm</th>
-                    <th className="sticky z-20 bg-muted/95 p-2 text-right" style={{ top: tableHeaderTopOffset }}>Thành viên</th>
-                    <th className="sticky z-20 bg-muted/95 p-2 text-left" style={{ top: tableHeaderTopOffset }}>Chat ID</th>
-                    <th className="sticky z-20 bg-muted/95 p-2 text-left" style={{ top: tableHeaderTopOffset }}>Quyền gửi</th>
-                    <th className="sticky z-20 bg-muted/95 p-2 text-left" style={{ top: tableHeaderTopOffset }}>Trạng thái</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.length > 0 ? (
-                    filtered.map((group) => {
-                      const targetStatus = groupStatusByChatId.get(group.chatId);
-                      const permissionState = resolveGroupPermissionState(group);
-                      const statusMeta = getGroupStatusMeta(targetStatus, permissionState);
-                      const isSelected = selectedIds.has(group.chatId);
-                      const isRunningRow = targetStatus === 'running';
-                      const isSelectionBlocked = permissionState === 'blocked';
-                      const permissionMeta =
-                        permissionState === 'allowed'
-                          ? { variant: 'success' as const, label: 'Gửi được' }
-                          : permissionState === 'blocked'
-                            ? { variant: 'destructive' as const, label: 'Không gửi được' }
-                            : { variant: 'warning' as const, label: 'Chỉ admin (cần kiểm tra)' };
-                      return (
-                        <tr
-                          key={group.chatId}
-                          ref={(element) => {
-                            if (element) {
-                              rowRefs.current.set(group.chatId, element);
+              <div ref={tableViewportRef} className="min-h-0 flex-1 overflow-auto">
+                <table className="w-full table-fixed border-separate border-spacing-0 text-sm leading-5">
+                  <colgroup>
+                    <col className="w-[4%]" />
+                    <col className="w-[34%]" />
+                    <col className="w-[9%]" />
+                    <col className="w-[24%]" />
+                    <col className="w-[16%]" />
+                    <col className="w-[13%]" />
+                  </colgroup>
+                  <thead className="sticky top-0 z-20 bg-muted/95">
+                    <tr>
+                      <th className="p-2 text-left">
+                        <Checkbox
+                          className={selectedCheckboxClass}
+                          checked={allVisibleSelected}
+                          disabled={visibleChatIds.length === 0}
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              selectAllVisible(visibleChatIds);
                               return;
                             }
-                            rowRefs.current.delete(group.chatId);
+                            deselectAllVisible(visibleChatIds);
                           }}
-                          className={`border-t border-border/70 ${
-                            isRunningRow
-                              ? 'bg-amber-500/12 ring-1 ring-inset ring-amber-400/40'
-                              : isSelected
-                                ? 'bg-emerald-500/12 ring-1 ring-inset ring-emerald-400/35'
-                              : 'odd:bg-card even:bg-card/95'
-                          } ${isSelectionBlocked ? 'opacity-70' : ''} hover:bg-muted/20`}
-                        >
-                          <td className="bg-inherit p-2">
-                            <Checkbox
-                              className={selectedCheckboxClass}
-                              checked={selectedIds.has(group.chatId)}
-                              disabled={isSelectionBlocked}
-                              onCheckedChange={() => toggleSelect(group.chatId)}
-                            />
-                          </td>
-                          <td className="truncate p-2" title={group.name}>
-                            {group.name}
-                          </td>
-                          <td className="whitespace-nowrap p-2 text-right tabular-nums">{group.membersCount}</td>
-                          <td className="p-2">
-                            <div className="flex min-w-0 items-center gap-1.5">
-                              <span className="min-w-0 flex-1 truncate font-mono text-xs" title={group.chatId}>
-                                {formatChatId(group.chatId)}
-                              </span>
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="ghost"
-                                className="h-7 px-2 text-xs"
-                                onClick={() => void copyChatId(group.chatId)}
-                                title="Sao chép chat id"
-                              >
-                                {copiedChatId === group.chatId ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-                              </Button>
-                            </div>
-                          </td>
-                          <td className="p-2">
-                            <Badge
-                              variant={permissionMeta.variant}
-                              className="whitespace-nowrap"
-                              title={isSelectionBlocked ? 'Nhóm này không hỗ trợ gửi từ API hiện tại.' : undefined}
-                            >
-                              {permissionMeta.label}
-                            </Badge>
-                          </td>
-                          <td className="p-2">
-                            <Badge variant={statusMeta.variant}>{statusMeta.label}</Badge>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  ) : (
-                    <tr className="border-t border-border/70">
-                      <td colSpan={6} className="p-3 text-center text-sm text-muted-foreground">
-                        Không có nhóm khớp bộ lọc hiện tại. Hãy nới từ khóa tìm kiếm hoặc số thành viên.
-                      </td>
+                        />
+                      </th>
+                      <th className="p-2 text-left">Nhóm</th>
+                      <th className="p-2 text-right">Thành viên</th>
+                      <th className="p-2 text-left">Chat ID</th>
+                      <th className="p-2 text-left">Quyền gửi</th>
+                      <th className="p-2 text-left">Trạng thái</th>
                     </tr>
-                  )}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {filtered.length > 0 ? (
+                      filtered.map((group) => {
+                        const targetStatus = groupStatusByChatId.get(group.chatId);
+                        const permissionState = resolveGroupPermissionState(group);
+                        const statusMeta = getGroupStatusMeta(targetStatus, permissionState);
+                        const isSelected = selectedIds.has(group.chatId);
+                        const isRunningRow = targetStatus === 'running';
+                        const isSelectionBlocked = permissionState === 'blocked';
+                        const permissionMeta =
+                          permissionState === 'allowed'
+                            ? { variant: 'success' as const, label: 'Gửi được' }
+                            : permissionState === 'blocked'
+                              ? { variant: 'destructive' as const, label: 'Không gửi được' }
+                              : { variant: 'warning' as const, label: 'Chỉ admin (cần kiểm tra)' };
+                        return (
+                          <tr
+                            key={group.chatId}
+                            ref={(element) => {
+                              if (element) {
+                                rowRefs.current.set(group.chatId, element);
+                                return;
+                              }
+                              rowRefs.current.delete(group.chatId);
+                            }}
+                            className={`border-t border-border/70 ${
+                              isRunningRow
+                                ? 'bg-amber-500/12 ring-1 ring-inset ring-amber-400/40'
+                                : isSelected
+                                  ? 'bg-emerald-500/12 ring-1 ring-inset ring-emerald-400/35'
+                                : 'odd:bg-card even:bg-card/95'
+                            } ${isSelectionBlocked ? 'opacity-70' : ''} hover:bg-muted/20`}
+                          >
+                            <td className="bg-inherit p-2">
+                              <Checkbox
+                                className={selectedCheckboxClass}
+                                checked={selectedIds.has(group.chatId)}
+                                onCheckedChange={() => toggleSelect(group.chatId)}
+                              />
+                            </td>
+                            <td className="truncate p-2" title={group.name}>
+                              {group.name}
+                            </td>
+                            <td className="whitespace-nowrap p-2 text-right tabular-nums">{group.membersCount}</td>
+                            <td className="p-2">
+                              <div className="flex min-w-0 items-center gap-1.5">
+                                <span className="min-w-0 flex-1 truncate font-mono text-xs" title={group.chatId}>
+                                  {formatChatId(group.chatId)}
+                                </span>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-7 px-2 text-xs"
+                                  onClick={() => void copyChatId(group.chatId)}
+                                  title="Sao chép chat id"
+                                >
+                                  {copiedChatId === group.chatId ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                                </Button>
+                              </div>
+                            </td>
+                            <td className="p-2">
+                              <Badge
+                                variant={permissionMeta.variant}
+                                className="whitespace-nowrap"
+                                title={isSelectionBlocked ? 'Nhóm này không hỗ trợ gửi từ API hiện tại.' : undefined}
+                              >
+                                {permissionMeta.label}
+                              </Badge>
+                            </td>
+                            <td className="p-2">
+                              <Badge variant={statusMeta.variant}>{statusMeta.label}</Badge>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    ) : (
+                      <tr className="border-t border-border/70">
+                        <td colSpan={6} className="p-3 text-center text-sm text-muted-foreground">
+                          Không có nhóm khớp bộ lọc hiện tại. Hãy nới từ khóa tìm kiếm hoặc số thành viên.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </>
           ) : (
             <div className="flex h-full min-h-[420px] items-center justify-center p-4">

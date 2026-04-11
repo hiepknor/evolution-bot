@@ -5,7 +5,7 @@ import {
   resolveGroupPermissionState
 } from '@/lib/groups/group-filtering';
 import { GROUP_PERMISSION_HINT_KEY } from '@/lib/groups/group-metadata';
-import type { Group } from '@/lib/types/domain';
+import type { Group, TargetStatus } from '@/lib/types/domain';
 
 const now = new Date().toISOString();
 
@@ -68,10 +68,10 @@ describe('group filtering', () => {
   });
 
   it('filters by status + permission and computes counts', () => {
-    const sentStatusByChatId = new Map<string, boolean>([
-      ['111@g.us', false],
-      ['222@g.us', true],
-      ['333@s.whatsapp.net', false]
+    const statusByChatId = new Map<string, TargetStatus>([
+      ['111@g.us', 'pending'],
+      ['222@g.us', 'dry-run-success'],
+      ['333@s.whatsapp.net', 'sent']
     ]);
 
     const filtered = applyGroupFilters({
@@ -80,12 +80,22 @@ describe('group filtering', () => {
       minMembers: null,
       statusFilterMode: 'pending',
       permissionFilterMode: 'allowed',
-      sentStatusByChatId
+      statusByChatId
     });
     expect(filtered.map((item) => item.chatId)).toEqual(['111@g.us']);
 
-    const counts = countGroupsByMode(groups, sentStatusByChatId);
-    expect(counts.status).toEqual({ all: 3, sent: 1, pending: 2 });
+    const dryRunFiltered = applyGroupFilters({
+      groups,
+      searchTerm: '',
+      minMembers: null,
+      statusFilterMode: 'dry-run-success',
+      permissionFilterMode: 'all',
+      statusByChatId
+    });
+    expect(dryRunFiltered.map((item) => item.chatId)).toEqual(['222@g.us']);
+
+    const counts = countGroupsByMode(groups, statusByChatId);
+    expect(counts.status).toEqual({ all: 3, sent: 1, dryRunSuccess: 1, pending: 1 });
     expect(counts.permission).toEqual({ all: 3, allowed: 1, unknown: 1, blocked: 1 });
   });
 

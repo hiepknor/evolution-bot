@@ -19,6 +19,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { panelTokens } from '@/components/layout/panel-tokens';
 import { lintTemplate } from '@/lib/templates/render-template';
+import { resolveGroupPermissionState } from '@/lib/groups/group-filtering';
 import { useCampaignStore } from '@/stores/use-campaign-store';
 import { useActivityLogStore } from '@/stores/use-activity-log-store';
 import { useComposerStore } from '@/stores/use-composer-store';
@@ -76,6 +77,10 @@ export function OperationsPanel(): JSX.Element {
   const selectedGroups = useMemo(
     () => groups.filter((group) => selectedIdsSet.has(group.chatId)),
     [groups, selectedIdsSet]
+  );
+  const selectedBlockedCount = useMemo(
+    () => selectedGroups.filter((group) => resolveGroupPermissionState(group) === 'blocked').length,
+    [selectedGroups]
   );
   const blockedIds = useMemo(
     () => new Set(campaignStore.config.blacklist),
@@ -689,10 +694,15 @@ export function OperationsPanel(): JSX.Element {
             </div>
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <span>Đã chọn {selectedCount}</span>
-              <span>Hợp lệ</span>
+              <span>Sẽ xử lý</span>
               <Badge variant={hasTargets ? 'success' : 'warning'}>{effectiveTargetCount}</Badge>
             </div>
           </div>
+          {selectedBlockedCount > 0 ? (
+            <p className="text-xs text-warning">
+              Có {selectedBlockedCount} nhóm thiếu quyền gửi, hệ thống vẫn chạy và sẽ tự bỏ qua các nhóm này.
+            </p>
+          ) : null}
 
           {campaignStore.running ? (
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
