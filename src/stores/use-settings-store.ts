@@ -60,7 +60,7 @@ const mapConnectionMessage = (raw: string): string => {
   if (/timeout|timed out|ETIMEDOUT/i.test(message)) {
     return 'Hết thời gian chờ kết nối. Hãy kiểm tra Base URL hoặc mạng.';
   }
-  if (/network|fetch failed|ENOTFOUND|ECONNREFUSED/i.test(message)) {
+  if (/network|fetch failed|ENOTFOUND|ECONNREFUSED|cannot reach server/i.test(message)) {
     return 'Không thể kết nối máy chủ. Hãy kiểm tra Base URL và trạng thái API.';
   }
   if (/http permission denied|not allowed by acl|plugin:http\|fetch/i.test(message)) {
