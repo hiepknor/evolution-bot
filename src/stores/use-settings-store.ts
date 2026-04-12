@@ -126,7 +126,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 
   save: async (input) => {
     set({ loading: true });
-    const previousSettings = get().settings;
+    const previousState = get();
+    const previousSettings = previousState.settings;
     const saved = await settingsRepo.upsert(input);
     const connectionChanged =
       !previousSettings ||
@@ -141,10 +142,12 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 
     set({
       settings: saved,
-      connectedInstanceName: null,
-      badgeState: 'disconnected',
+      connectedInstanceName: connectionChanged ? null : previousState.connectedInstanceName,
+      badgeState: connectionChanged ? 'disconnected' : previousState.badgeState,
       loading: false,
       statusMessage: connectionChanged ? 'Đã lưu cấu hình, cần kết nối lại' : 'Đã lưu cấu hình',
+      lastCheckedAt: connectionChanged ? null : previousState.lastCheckedAt,
+      lastSuccessfulCheckedAt: connectionChanged ? null : previousState.lastSuccessfulCheckedAt,
       lastErrorMessage: null
     });
     useActivityLogStore.getState().pushUiLog({
@@ -283,7 +286,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     set({
       badgeState: 'disconnected',
       connectedInstanceName: null,
-      statusMessage: 'Đã ngắt kết nối'
+      statusMessage: 'Đã ngắt kết nối',
+      lastErrorMessage: null
     });
     useActivityLogStore.getState().pushUiLog({
       level: 'info',

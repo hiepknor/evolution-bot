@@ -75,13 +75,39 @@ export function ConnectionPanel(): JSX.Element {
   const connectionStatus = getConnectionStatusPresentation(badgeState, statusMessage);
   const shouldShowStatusBanner = connectionStatus.hasError;
   const statusToneClass = 'border-destructive/30 bg-destructive/10 text-destructive';
+  const disconnectedReason = (() => {
+    if (badgeState !== 'disconnected') {
+      return null;
+    }
+    if (connectionStatus.hasError || lastErrorMessage) {
+      return { label: 'Do lỗi kết nối', toneClass: 'border-destructive/40 bg-destructive/10 text-destructive' };
+    }
+    if (/ngắt kết nối/i.test(statusMessage)) {
+      return { label: 'Do người dùng ngắt kết nối', toneClass: 'border-warning/40 bg-warning/10 text-warning' };
+    }
+    if (/cần kết nối lại|đã lưu cấu hình/i.test(statusMessage)) {
+      return { label: 'Do thay đổi cấu hình', toneClass: 'border-warning/40 bg-warning/10 text-warning' };
+    }
+    return { label: 'Chưa kiểm tra kết nối', toneClass: 'border-border/60 bg-muted/40 text-muted-foreground' };
+  })();
+  const noteToneClass = connectionStatus.hasError
+    ? 'text-destructive'
+    : badgeState === 'connected'
+      ? 'text-success'
+      : badgeState === 'checking'
+        ? 'text-warning'
+        : 'text-muted-foreground';
   const saveButtonLabel = saveMutation.isPending ? 'Đang lưu...' : 'Lưu cấu hình';
   const connectButtonLabel =
     badgeState === 'connected'
       ? 'Ngắt kết nối'
       : testMutation.isPending
         ? 'Đang kết nối...'
-        : 'Kết nối';
+        : shouldShowStatusBanner
+          ? 'Thử lại kết nối'
+          : lastSuccessfulCheckedAt
+            ? 'Kết nối lại'
+            : 'Kết nối';
   const formatTimestamp = (value: string | null): string => {
     if (!value) {
       return 'Chưa có';
@@ -258,8 +284,14 @@ export function ConnectionPanel(): JSX.Element {
           <p>
             Trạng thái hiện tại: <span className="font-medium text-foreground">{connectionStatus.label}</span>
           </p>
+          <p className={noteToneClass}>Ghi chú: {statusMessage}</p>
+          {disconnectedReason ? (
+            <div className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${disconnectedReason.toneClass}`}>
+              {disconnectedReason.label}
+            </div>
+          ) : null}
           <p>Lần kiểm tra gần nhất: {formatTimestamp(lastCheckedAt)}</p>
-          <p>Lần kết nối thành công gần nhất: {formatTimestamp(lastSuccessfulCheckedAt)}</p>
+          <p>Lần kết nối thành công cuối cùng (lịch sử): {formatTimestamp(lastSuccessfulCheckedAt)}</p>
           {lastErrorMessage ? <p className="text-destructive">Lỗi gần nhất: {lastErrorMessage}</p> : null}
           {shouldShowStatusBanner && badgeState !== 'checking' ? (
             <Button
