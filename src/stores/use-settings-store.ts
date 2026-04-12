@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { isValidHttpBaseUrl, normalizeBaseUrl } from '@/lib/connection/connection-settings';
 import type { ConnectionBadgeState, ConnectionSettings } from '@/lib/types/domain';
 import { settingsRepo } from '@/lib/db/repositories';
 import { createProvider } from '@/lib/providers/provider-factory';
@@ -15,15 +16,28 @@ const readSettingsFromEnv = (): Pick<
   const defaultProvider = (import.meta.env.VITE_DEFAULT_PROVIDER as string | undefined)?.trim();
   const mockProvider = (import.meta.env.VITE_MOCK_PROVIDER as string | undefined)?.trim();
 
+  const providerMode =
+    defaultProvider === 'mock' || mockProvider === 'true' ? 'mock' : 'evolution';
+
+  if (providerMode === 'mock') {
+    return {
+      baseUrl: normalizeBaseUrl(baseUrl || 'http://localhost:8080'),
+      apiKey: apiKey || 'mock-key',
+      instanceName: instanceName || 'mock-instance',
+      providerMode
+    };
+  }
+
   if (!baseUrl || !apiKey || !instanceName) {
     return null;
   }
 
-  const providerMode =
-    defaultProvider === 'mock' || mockProvider === 'true' ? 'mock' : 'evolution';
+  if (!isValidHttpBaseUrl(baseUrl)) {
+    return null;
+  }
 
   return {
-    baseUrl,
+    baseUrl: normalizeBaseUrl(baseUrl),
     apiKey,
     instanceName,
     providerMode
@@ -35,6 +49,9 @@ export interface SettingsState {
   connectedInstanceName: string | null;
   badgeState: ConnectionBadgeState;
   statusMessage: string;
+  lastCheckedAt: string | null;
+  lastSuccessfulCheckedAt: string | null;
+  lastErrorMessage: string | null;
   loading: boolean;
   load: () => Promise<void>;
   save: (input: Pick<ConnectionSettings, 'baseUrl' | 'apiKey' | 'instanceName' | 'providerMode'>) => Promise<void>;
@@ -78,6 +95,9 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   connectedInstanceName: null,
   badgeState: 'disconnected',
   statusMessage: 'Chưa kết nối',
+  lastCheckedAt: null,
+  lastSuccessfulCheckedAt: null,
+  lastErrorMessage: null,
   loading: false,
 
   load: async () => {
@@ -124,7 +144,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       connectedInstanceName: null,
       badgeState: 'disconnected',
       loading: false,
-      statusMessage: connectionChanged ? 'Đã lưu cấu hình, cần kết nối lại' : 'Đã lưu cấu hình'
+      statusMessage: connectionChanged ? 'Đã lưu cấu hình, cần kết nối lại' : 'Đã lưu cấu hình',
+      lastErrorMessage: null
     });
     useActivityLogStore.getState().pushUiLog({
       level: 'success',
@@ -139,9 +160,16 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   },
 
   testConnection: async (input) => {
+    const checkedAt = new Date().toISOString();
     const settings = input ?? get().settings;
     if (!settings) {
-      set({ badgeState: 'disconnected', statusMessage: 'Thiếu cấu hình kết nối' });
+      const message = 'Thiếu cấu hình kết nối';
+      set({
+        badgeState: 'disconnected',
+        statusMessage: message,
+        lastCheckedAt: checkedAt,
+        lastErrorMessage: message
+      });
       useActivityLogStore.getState().pushUiLog({
         level: 'warn',
         message: 'Kiểm tra kết nối thất bại: thiếu cấu hình'
@@ -153,7 +181,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       set({
         badgeState: 'connected',
         connectedInstanceName: settings.instanceName,
-        statusMessage: `Kết nối thành công tới ${settings.instanceName}`
+        statusMessage: `Kết nối thành công tới ${settings.instanceName}`,
+        lastCheckedAt: checkedAt,
+        lastSuccessfulCheckedAt: checkedAt,
+        lastErrorMessage: null
       });
       useActivityLogStore.getState().pushUiLog({
         level: 'success',
@@ -162,7 +193,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       return;
     }
 
-    set({ badgeState: 'checking', statusMessage: 'Đang kiểm tra kết nối...' });
+    set({
+      badgeState: 'checking',
+      statusMessage: 'Đang kiểm tra kết nối...',
+      lastErrorMessage: null
+    });
     useActivityLogStore.getState().pushUiLog({
       level: 'info',
       message: `Đang kiểm tra kết nối tới instance ${settings.instanceName}`
@@ -185,7 +220,12 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
           availableInstances.length > 0
             ? `Instance "${settings.instanceName}" không có trong danh sách khả dụng: ${availableInstances.join(', ')}`
             : `Không tìm thấy instance "${settings.instanceName}" trong phản hồi từ máy chủ.`;
-        set({ badgeState: 'disconnected', statusMessage: message });
+        set({
+          badgeState: 'disconnected',
+          statusMessage: message,
+          lastCheckedAt: checkedAt,
+          lastErrorMessage: message
+        });
         useActivityLogStore.getState().pushUiLog({
           level: 'error',
           message: `Kiểm tra kết nối thất bại: ${message}`
@@ -196,7 +236,12 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       const connectionState = await provider.getConnectionState(settings.instanceName);
       if (!connectionState.isConnected) {
         const message = `Instance "${settings.instanceName}" chưa kết nối (state: ${connectionState.state}).`;
-        set({ badgeState: 'disconnected', statusMessage: message });
+        set({
+          badgeState: 'disconnected',
+          statusMessage: message,
+          lastCheckedAt: checkedAt,
+          lastErrorMessage: message
+        });
         useActivityLogStore.getState().pushUiLog({
           level: 'error',
           message: `Kiểm tra kết nối thất bại: ${message}`
@@ -207,7 +252,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       set({
         badgeState: 'connected',
         connectedInstanceName: settings.instanceName,
-        statusMessage: `Kết nối thành công tới ${settings.instanceName}`
+        statusMessage: `Kết nối thành công tới ${settings.instanceName}`,
+        lastCheckedAt: checkedAt,
+        lastSuccessfulCheckedAt: checkedAt,
+        lastErrorMessage: null
       });
       useActivityLogStore.getState().pushUiLog({
         level: 'success',
@@ -217,7 +265,12 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       const fallbackMessage = mapConnectionMessage(
         error instanceof Error ? error.message : 'Kết nối thất bại'
       );
-      set({ badgeState: 'disconnected', statusMessage: fallbackMessage });
+      set({
+        badgeState: 'disconnected',
+        statusMessage: fallbackMessage,
+        lastCheckedAt: checkedAt,
+        lastErrorMessage: fallbackMessage
+      });
       useActivityLogStore.getState().pushUiLog({
         level: 'error',
         message: `Kiểm tra kết nối lỗi: ${fallbackMessage}`

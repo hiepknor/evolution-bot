@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
-import { z } from 'zod';
 import { useMutation } from '@tanstack/react-query';
-import { Loader2, PlugZap, Save, Unplug } from 'lucide-react';
+import { Loader2, PlugZap, RefreshCcw, Save, Unplug } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -15,57 +14,15 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select';
+import {
+  connectionSettingsSchema,
+  normalizeConnectionInput,
+  type ConnectionFormValues
+} from '@/lib/connection/connection-settings';
 import { getConnectionStatusPresentation } from '@/lib/connection/connection-status';
 import { useSettingsStore } from '@/stores/use-settings-store';
 
-const schema = z
-  .object({
-    baseUrl: z.string(),
-    apiKey: z.string(),
-    instanceName: z.string(),
-    providerMode: z.enum(['evolution', 'mock'])
-  })
-  .superRefine((value, ctx) => {
-    if (value.providerMode !== 'evolution') {
-      return;
-    }
-
-    const baseUrl = value.baseUrl.trim();
-    const apiKey = value.apiKey.trim();
-    const instanceName = value.instanceName.trim();
-
-    if (!baseUrl) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['baseUrl'],
-        message: 'Base URL là bắt buộc'
-      });
-    } else if (!z.string().url().safeParse(baseUrl).success) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['baseUrl'],
-        message: 'URL không hợp lệ'
-      });
-    }
-
-    if (!apiKey) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['apiKey'],
-        message: 'API key là bắt buộc'
-      });
-    }
-
-    if (!instanceName) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['instanceName'],
-        message: 'Tên instance là bắt buộc'
-      });
-    }
-  });
-
-type FormValues = z.infer<typeof schema>;
+type FormValues = ConnectionFormValues;
 
 export function ConnectionPanel(): JSX.Element {
   const [showApiKey, setShowApiKey] = useState(false);
@@ -75,10 +32,13 @@ export function ConnectionPanel(): JSX.Element {
   const disconnect = useSettingsStore((state) => state.disconnect);
   const badgeState = useSettingsStore((state) => state.badgeState);
   const statusMessage = useSettingsStore((state) => state.statusMessage);
+  const lastCheckedAt = useSettingsStore((state) => state.lastCheckedAt);
+  const lastSuccessfulCheckedAt = useSettingsStore((state) => state.lastSuccessfulCheckedAt);
+  const lastErrorMessage = useSettingsStore((state) => state.lastErrorMessage);
   const loading = useSettingsStore((state) => state.loading);
 
   const form = useForm<FormValues>({
-    resolver: zodResolver(schema),
+    resolver: zodResolver(connectionSettingsSchema),
     defaultValues: {
       baseUrl: '',
       apiKey: '',
@@ -122,28 +82,21 @@ export function ConnectionPanel(): JSX.Element {
       : testMutation.isPending
         ? 'Đang kết nối...'
         : 'Kết nối';
-
-  const normalizeValuesForProvider = (values: FormValues): FormValues => {
-    const fallbackBaseUrl = settings?.baseUrl?.trim() || 'http://localhost:8080';
-    const fallbackApiKey = settings?.apiKey?.trim() || 'mock-key';
-    const fallbackInstanceName = settings?.instanceName?.trim() || 'mock-instance';
-
-    if (values.providerMode === 'mock') {
-      return {
-        ...values,
-        baseUrl: values.baseUrl.trim() || fallbackBaseUrl,
-        apiKey: values.apiKey.trim() || fallbackApiKey,
-        instanceName: values.instanceName.trim() || fallbackInstanceName
-      };
+  const formatTimestamp = (value: string | null): string => {
+    if (!value) {
+      return 'Chưa có';
     }
-
-    return {
-      ...values,
-      baseUrl: values.baseUrl.trim(),
-      apiKey: values.apiKey.trim(),
-      instanceName: values.instanceName.trim()
-    };
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      return value;
+    }
+    return parsed.toLocaleString('vi-VN');
   };
+  const runSaveAndTest = form.handleSubmit(async (values) => {
+    const normalized = normalizeConnectionInput(values, settings ?? undefined);
+    await saveMutation.mutateAsync(normalized);
+    await testMutation.mutateAsync(normalized);
+  });
 
   return (
     <Card className="border-border/70 bg-card/85 shadow-[0_14px_36px_-26px_hsl(var(--foreground))]">
@@ -250,7 +203,7 @@ export function ConnectionPanel(): JSX.Element {
             variant="outline"
             className="h-10 w-full text-sm font-medium"
             onClick={form.handleSubmit(async (values) => {
-              const normalized = normalizeValuesForProvider(values);
+              const normalized = normalizeConnectionInput(values, settings ?? undefined);
               await saveMutation.mutateAsync(normalized);
             })}
             disabled={busy}
@@ -278,12 +231,7 @@ export function ConnectionPanel(): JSX.Element {
             onClick={
               badgeState === 'connected'
                 ? () => disconnect()
-                : form.handleSubmit(async (values) => {
-                    // Auto-save the latest form before testing connection.
-                    const normalized = normalizeValuesForProvider(values);
-                    await saveMutation.mutateAsync(normalized);
-                    await testMutation.mutateAsync(normalized);
-                  })
+                : runSaveAndTest
             }
             disabled={busy}
           >
@@ -304,6 +252,28 @@ export function ConnectionPanel(): JSX.Element {
               </>
             )}
           </Button>
+        </div>
+
+        <div className="space-y-1 rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+          <p>
+            Trạng thái hiện tại: <span className="font-medium text-foreground">{connectionStatus.label}</span>
+          </p>
+          <p>Lần kiểm tra gần nhất: {formatTimestamp(lastCheckedAt)}</p>
+          <p>Lần kết nối thành công gần nhất: {formatTimestamp(lastSuccessfulCheckedAt)}</p>
+          {lastErrorMessage ? <p className="text-destructive">Lỗi gần nhất: {lastErrorMessage}</p> : null}
+          {shouldShowStatusBanner && badgeState !== 'checking' ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="mt-1 h-8 w-full text-xs sm:w-auto"
+              onClick={runSaveAndTest}
+              disabled={busy}
+            >
+              <RefreshCcw className="mr-2 h-3.5 w-3.5" />
+              Thử lại
+            </Button>
+          ) : null}
         </div>
       </CardContent>
     </Card>
