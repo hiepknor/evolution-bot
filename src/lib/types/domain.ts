@@ -59,6 +59,15 @@ export interface ComposerState {
   recentFiles: string[];
 }
 
+export interface QuickContentItem {
+  id: string;
+  label: string;
+  content: string;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Campaign {
   id: string;
   name: string;

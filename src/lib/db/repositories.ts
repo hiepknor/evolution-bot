@@ -9,6 +9,7 @@ import type {
   ConnectionSettings,
   Group,
   LogLevel,
+  QuickContentItem,
   TargetStatus
 } from '@/lib/types/domain';
 import { extractGroupAdminOnly, extractGroupMembersCount } from '@/lib/groups/group-metadata';
@@ -115,6 +116,84 @@ export const campaignPreferencesRepo = {
        VALUES ($1, $2, $3, $4)`,
       ['default', JSON.stringify(config), createdAt, updatedAt]
     );
+  }
+};
+
+export const quickContentItemsRepo = {
+  async list(): Promise<QuickContentItem[]> {
+    const db = await getDb();
+    const rows = await db.select<
+      Array<{
+        id: string;
+        label: string;
+        content: string;
+        sort_order: number;
+        created_at: string;
+        updated_at: string;
+      }>
+    >('SELECT * FROM quick_content_items ORDER BY sort_order ASC, created_at ASC');
+
+    return rows.map((row) => ({
+      id: row.id,
+      label: row.label,
+      content: row.content,
+      sortOrder: Number(row.sort_order ?? 0),
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    }));
+  },
+
+  async create(input: Pick<QuickContentItem, 'label' | 'content'>): Promise<QuickContentItem> {
+    const db = await getDb();
+    const rows = await db.select<Array<{ max_sort_order: number | null }>>(
+      'SELECT MAX(sort_order) AS max_sort_order FROM quick_content_items'
+    );
+    const sortOrder = Number(rows[0]?.max_sort_order ?? -1) + 1;
+    const item: QuickContentItem = {
+      id: uuidv4(),
+      label: input.label.trim(),
+      content: input.content.trim(),
+      sortOrder,
+      createdAt: now(),
+      updatedAt: now()
+    };
+
+    await db.execute(
+      `INSERT INTO quick_content_items (id, label, content, sort_order, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [item.id, item.label, item.content, item.sortOrder, item.createdAt, item.updatedAt]
+    );
+
+    return item;
+  },
+
+  async update(id: string, input: Pick<QuickContentItem, 'label' | 'content'>): Promise<void> {
+    const db = await getDb();
+    await db.execute(
+      `UPDATE quick_content_items
+       SET label = $1, content = $2, updated_at = $3
+       WHERE id = $4`,
+      [input.label.trim(), input.content.trim(), now(), id]
+    );
+  },
+
+  async remove(id: string): Promise<void> {
+    const db = await getDb();
+    await db.execute('DELETE FROM quick_content_items WHERE id = $1', [id]);
+  },
+
+  async reorder(idsInOrder: string[]): Promise<void> {
+    const db = await getDb();
+    const updatedAt = now();
+
+    for (const [index, id] of idsInOrder.entries()) {
+      await db.execute(
+        `UPDATE quick_content_items
+         SET sort_order = $1, updated_at = $2
+         WHERE id = $3`,
+        [index, updatedAt, id]
+      );
+    }
   }
 };
 
