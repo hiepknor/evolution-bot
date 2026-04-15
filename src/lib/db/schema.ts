@@ -68,7 +68,16 @@ export const MIGRATIONS: string[] = [
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );`,
+  `CREATE TABLE IF NOT EXISTS quick_content_items (
+    id TEXT PRIMARY KEY,
+    label TEXT NOT NULL,
+    content TEXT NOT NULL,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );`,
   `CREATE INDEX IF NOT EXISTS idx_groups_cache_chat_id ON groups_cache(chat_id);`,
   `CREATE INDEX IF NOT EXISTS idx_campaign_targets_campaign_id ON campaign_targets(campaign_id);`,
-  `CREATE INDEX IF NOT EXISTS idx_campaign_logs_campaign_id ON campaign_logs(campaign_id);`
+  `CREATE INDEX IF NOT EXISTS idx_campaign_logs_campaign_id ON campaign_logs(campaign_id);`,
+  `CREATE INDEX IF NOT EXISTS idx_quick_content_items_sort_order ON quick_content_items(sort_order, created_at);`
 ];

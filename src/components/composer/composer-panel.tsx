@@ -20,6 +20,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { QuickContentModal } from '@/components/composer/quick-content-modal';
 import { panelTokens } from '@/components/layout/panel-tokens';
 import { optimizeImageForCampaign } from '@/lib/media/image-optimizer';
 import { inferImageMimeType, readImageBytes, toAppCacheImagePath } from '@/lib/media/image-path';
@@ -94,6 +95,7 @@ export function ComposerPanel(): JSX.Element {
   const [showAdvancedContent, setShowAdvancedContent] = useState(false);
   const [confirmRemoveImageOpen, setConfirmRemoveImageOpen] = useState(false);
   const [confirmClearDraftOpen, setConfirmClearDraftOpen] = useState(false);
+  const [quickContentOpen, setQuickContentOpen] = useState(false);
   const [recentFileHealth, setRecentFileHealth] = useState<Record<string, RecentFileHealth>>({});
   const [isMediaDropActive, setIsMediaDropActive] = useState(false);
   const templateIssues = useMemo(
@@ -447,6 +449,49 @@ export function ComposerPanel(): JSX.Element {
     });
   };
 
+  const insertQuickContent = (content: string, mode: 'insert' | 'replace') => {
+    const trimmedContent = content.trim();
+    if (!trimmedContent) {
+      return;
+    }
+
+    if (mode === 'replace') {
+      composer.setCaptionTemplate(trimmedContent);
+      requestAnimationFrame(() => {
+        const el = textareaRef.current;
+        if (!el) {
+          return;
+        }
+        const nextCursor = trimmedContent.length;
+        el.focus();
+        el.setSelectionRange(nextCursor, nextCursor);
+      });
+      return;
+    }
+
+    const el = textareaRef.current;
+    const current = composer.captionTemplate;
+    if (!el) {
+      composer.setCaptionTemplate(current ? `${current}\n${trimmedContent}` : trimmedContent);
+      return;
+    }
+
+    const start = el.selectionStart ?? current.length;
+    const end = el.selectionEnd ?? current.length;
+    const before = current.slice(0, start);
+    const after = current.slice(end);
+    const prefix = before && !before.endsWith('\n') ? '\n' : '';
+    const suffix = after && !after.startsWith('\n') ? '\n' : '';
+    const next = `${before}${prefix}${trimmedContent}${suffix}${after}`;
+    const nextCursor = (before + prefix + trimmedContent).length;
+
+    composer.setCaptionTemplate(next);
+    requestAnimationFrame(() => {
+      el.focus();
+      el.setSelectionRange(nextCursor, nextCursor);
+    });
+  };
+
   return (
     <Card>
       <CardHeader className={panelTokens.cardHeader}>
@@ -627,6 +672,22 @@ export function ComposerPanel(): JSX.Element {
 
         <div className="space-y-2">
           <h3 className={panelTokens.sectionTitle}>Mẫu nội dung</h3>
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/30 bg-muted/[0.08] p-3">
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-foreground">Chọn nhanh từ danh sách item</p>
+              <p className="text-xs text-muted-foreground">
+                Mở modal để thêm, sửa, xoá và chọn nhiều item đưa vào mẫu nội dung.
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              className={`${panelTokens.control} px-3`}
+              onClick={() => setQuickContentOpen(true)}
+            >
+              Chọn nhanh từ mẫu
+            </Button>
+          </div>
           <div className="rounded-lg border border-border/30 bg-muted/[0.08] p-3">
             <div className="flex flex-wrap items-center gap-2 whitespace-normal">
               <span className="text-xs text-muted-foreground">Chèn biến:</span>
@@ -838,6 +899,12 @@ export function ComposerPanel(): JSX.Element {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        <QuickContentModal
+          open={quickContentOpen}
+          onOpenChange={setQuickContentOpen}
+          onApply={insertQuickContent}
+        />
       </CardContent>
     </Card>
   );
