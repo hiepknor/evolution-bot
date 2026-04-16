@@ -13,7 +13,12 @@ import type {
   TargetStatus
 } from '@/lib/types/domain';
 import { extractGroupAdminOnly, extractGroupMembersCount } from '@/lib/groups/group-metadata';
-import { deobfuscate, obfuscate } from '@/lib/utils/crypto';
+import { deobfuscate } from '@/lib/utils/crypto';
+import {
+  clearApiKeyFromKeychain,
+  loadApiKeyFromKeychain,
+  saveApiKeyToKeychain
+} from '@/lib/tauri/keychain';
 
 const now = () => dayjs().toISOString();
 
@@ -37,10 +42,32 @@ export const settingsRepo = {
       return null;
     }
 
+    let apiKey = '';
+    try {
+      apiKey = (await loadApiKeyFromKeychain()) ?? '';
+    } catch {
+      apiKey = '';
+    }
+
+    // Backward compatibility for existing installs that still have obfuscated key in DB.
+    if (!apiKey && row.api_key_obfuscated) {
+      const legacyApiKey = deobfuscate(row.api_key_obfuscated);
+      if (legacyApiKey) {
+        apiKey = legacyApiKey;
+        try {
+          await saveApiKeyToKeychain(legacyApiKey);
+          const db = await getDb();
+          await db.execute('UPDATE app_settings SET api_key_obfuscated = $1 WHERE id = $2', ['', row.id]);
+        } catch {
+          // Best effort migration only; continue with in-memory key when secure storage is unavailable.
+        }
+      }
+    }
+
     return {
       id: row.id,
       baseUrl: row.base_url,
-      apiKey: deobfuscate(row.api_key_obfuscated),
+      apiKey,
       instanceName: row.instance_name,
       providerMode: row.provider_mode,
       createdAt: row.created_at,
@@ -55,13 +82,19 @@ export const settingsRepo = {
     const createdAt = existing?.createdAt ?? now();
     const updatedAt = now();
 
+    if (input.apiKey.trim()) {
+      await saveApiKeyToKeychain(input.apiKey.trim());
+    } else {
+      await clearApiKeyFromKeychain();
+    }
+
     await db.execute(
       `INSERT OR REPLACE INTO app_settings (id, base_url, api_key_obfuscated, instance_name, provider_mode, created_at, updated_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7);`,
       [
         id,
         input.baseUrl,
-        obfuscate(input.apiKey),
+        '',
         input.instanceName,
         input.providerMode,
         createdAt,
@@ -186,13 +219,20 @@ export const quickContentItemsRepo = {
     const db = await getDb();
     const updatedAt = now();
 
-    for (const [index, id] of idsInOrder.entries()) {
-      await db.execute(
-        `UPDATE quick_content_items
-         SET sort_order = $1, updated_at = $2
-         WHERE id = $3`,
-        [index, updatedAt, id]
-      );
+    await db.execute('BEGIN');
+    try {
+      for (const [index, id] of idsInOrder.entries()) {
+        await db.execute(
+          `UPDATE quick_content_items
+           SET sort_order = $1, updated_at = $2
+           WHERE id = $3`,
+          [index, updatedAt, id]
+        );
+      }
+      await db.execute('COMMIT');
+    } catch (error) {
+      await db.execute('ROLLBACK');
+      throw error;
     }
   }
 };
@@ -213,7 +253,12 @@ export const groupsRepo = {
     >('SELECT * FROM groups_cache ORDER BY name ASC');
 
     return rows.map((row) => {
-      const raw = JSON.parse(row.raw_json) as Record<string, unknown>;
+      let raw: Record<string, unknown> = {};
+      try {
+        raw = JSON.parse(row.raw_json) as Record<string, unknown>;
+      } catch {
+        raw = {};
+      }
       const groupMetadata = (raw.groupMetadata ?? raw.metadata ?? {}) as Record<string, unknown>;
       const adminOnly = extractGroupAdminOnly(raw, groupMetadata);
       const parsedMembersCount = extractGroupMembersCount(raw, groupMetadata);
@@ -234,22 +279,29 @@ export const groupsRepo = {
 
   async replaceAll(groups: Group[]): Promise<void> {
     const db = await getDb();
-    await db.execute('DELETE FROM groups_cache');
+    await db.execute('BEGIN');
+    try {
+      await db.execute('DELETE FROM groups_cache');
 
-    for (const group of groups) {
-      await db.execute(
-        `INSERT INTO groups_cache (id, chat_id, name, members_count, sendable, raw_json, synced_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [
-          group.id,
-          group.chatId,
-          group.name,
-          group.membersCount,
-          group.sendable ? 1 : 0,
-          JSON.stringify(group.raw),
-          group.syncedAt
-        ]
-      );
+      for (const group of groups) {
+        await db.execute(
+          `INSERT INTO groups_cache (id, chat_id, name, members_count, sendable, raw_json, synced_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [
+            group.id,
+            group.chatId,
+            group.name,
+            group.membersCount,
+            group.sendable ? 1 : 0,
+            JSON.stringify(group.raw),
+            group.syncedAt
+          ]
+        );
+      }
+      await db.execute('COMMIT');
+    } catch (error) {
+      await db.execute('ROLLBACK');
+      throw error;
     }
   },
 
