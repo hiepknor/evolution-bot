@@ -152,7 +152,11 @@ Cross-build prerequisites (macOS -> Windows):
 - Evolution API deployments can differ in endpoint shape; `EvolutionProvider` includes fallback group endpoints but may require path adjustments.
 - Image media upload uses base64 payload; some Evolution setups may require external media URLs depending on server configuration.
 - Pane resizing is not implemented yet (layout is responsive and desktop-focused).
-- API key is obfuscated in local DB, not hardware keychain-encrypted.
+
+## Secret Storage
+
+- Desktop secret values (API key) are stored via OS keychain using Tauri `keyring` integration in [src-tauri/src/lib.rs](src-tauri/src/lib.rs).
+- Local DB keeps app settings metadata, but the sensitive key material is retrieved from keychain at runtime.
 
 ## Important Paths
 

@@ -105,4 +105,57 @@ describe('group filtering', () => {
     expect(resolveGroupPermissionState(hintedAllowed)).toBe('allowed');
     expect(resolveGroupPermissionState(hintedBlocked)).toBe('blocked');
   });
+
+  it('returns empty when input groups are empty', () => {
+    const filtered = applyGroupFilters({
+      groups: [],
+      searchTerm: 'abc',
+      minMembers: 10,
+      statusFilterMode: 'all',
+      permissionFilterMode: 'all',
+      statusByChatId: new Map()
+    });
+
+    expect(filtered).toEqual([]);
+  });
+
+  it('supports unicode search terms', () => {
+    const unicodeGroups: Group[] = [
+      {
+        id: 'g-unicode',
+        chatId: '999@g.us',
+        name: 'Nhóm Đặc Biệt',
+        membersCount: 42,
+        sendable: true,
+        adminOnly: false,
+        raw: {},
+        syncedAt: now
+      }
+    ];
+
+    const filtered = applyGroupFilters({
+      groups: unicodeGroups,
+      searchTerm: 'đặc',
+      minMembers: null,
+      statusFilterMode: 'all',
+      permissionFilterMode: 'all',
+      statusByChatId: new Map()
+    });
+
+    expect(filtered.map((item) => item.chatId)).toEqual(['999@g.us']);
+  });
+
+  it('keeps admin-only group in unknown permission bucket', () => {
+    const adminGroup = groups[1]!;
+    const filtered = applyGroupFilters({
+      groups: [adminGroup],
+      searchTerm: '',
+      minMembers: null,
+      statusFilterMode: 'all',
+      permissionFilterMode: 'unknown',
+      statusByChatId: new Map()
+    });
+
+    expect(filtered.map((item) => item.chatId)).toEqual([adminGroup.chatId]);
+  });
 });

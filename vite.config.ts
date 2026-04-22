@@ -10,7 +10,33 @@ export default defineConfig({
     }
   },
   build: {
-    chunkSizeWarningLimit: 650
+    chunkSizeWarningLimit: 650,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('@radix-ui/')) {
+            return 'radix';
+          }
+          if (id.includes('/react-dom/') || id.includes('/react/')) {
+            return 'react-vendor';
+          }
+          if (id.includes('/@tanstack/react-query/')) {
+            return 'tanstack';
+          }
+          if (id.includes('/dayjs/')) {
+            return 'dayjs';
+          }
+          if (
+            id.includes('/zod/') ||
+            id.includes('/react-hook-form/') ||
+            id.includes('/@hookform/resolvers/')
+          ) {
+            return 'zod-forms';
+          }
+          return undefined;
+        }
+      }
+    }
   },
   server: {
     port: 1420,
