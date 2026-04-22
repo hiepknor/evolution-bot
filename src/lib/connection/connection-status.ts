@@ -32,5 +32,5 @@ export const getConnectionStatusPresentation = (
     return { label: 'Mất kết nối', tone: 'destructive', hasError: true };
   }
 
-  return { label: 'Mất kết nối', tone: 'secondary', hasError: false };
+  return { label: 'Chưa kết nối', tone: 'secondary', hasError: false };
 };
