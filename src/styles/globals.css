@@ -19,16 +19,16 @@
   --muted-foreground: 215 12% 64%;
   --accent: 186 70% 22%;
   --accent-foreground: 200 90% 96%;
-  --destructive: 2 76% 55%;
   --border: 210 10% 28%;
   --border-soft: 210 10% 24%;
   --input: 210 10% 28%;
   --ring: 189 96% 41%;
-  --success: 148 58% 48%;
-  --warning: 38 92% 56%;
+  --success: 150 56% 46%;
+  --warning: 38 90% 54%;
+  --destructive: 2 72% 52%;
   --text-strong: 200 25% 98%;
   --text-muted-2: 215 10% 72%;
-  --radius: 0.6rem;
+  --radius: 0.72rem;
 }
 
 * {

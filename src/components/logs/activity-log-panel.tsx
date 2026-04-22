@@ -1,6 +1,6 @@
 import dayjs from 'dayjs';
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
-import { Search, Trash2, X } from 'lucide-react';
+import { AlertCircle, AlertTriangle, CheckCircle2, Info, Search, Trash2, X } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -38,9 +38,16 @@ const filterLabel: Record<LogFilter, string> = {
 const filterShortLabel: Record<LogFilter, string> = {
   all: 'Tất cả',
   info: 'Tin',
-  success: 'OK',
+  success: 'T.công',
   warn: 'C.báo',
   error: 'Lỗi'
+};
+
+const levelIcon: Record<string, JSX.Element> = {
+  info: <Info className="h-3.5 w-3.5" />,
+  success: <CheckCircle2 className="h-3.5 w-3.5" />,
+  warn: <AlertTriangle className="h-3.5 w-3.5" />,
+  error: <AlertCircle className="h-3.5 w-3.5" />
 };
 
 const levelItemTone: Record<string, string> = {
@@ -194,11 +201,11 @@ export function ActivityLogPanel({ onRequestClose, className }: ActivityLogPanel
     queueProgress.processed < queueProgress.total &&
     liveEtaMs <= 5000
   );
-  const runningEtaLabel = paused
-    ? `Tạm dừng • ETA còn lại: ${formatRemainingTime(liveEtaMs)}`
+const runningEtaLabel = paused
+    ? `Tạm dừng • Còn lại: ${formatRemainingTime(liveEtaMs)}`
     : isAlmostDone
       ? 'Sắp hoàn tất...'
-      : `ETA (ước tính): ${formatRemainingTime(liveEtaMs)}`;
+      : `Ước tính còn lại: ${formatRemainingTime(liveEtaMs)}`;
 
   useEffect(() => {
     const wasRunning = prevRunningRef.current;
@@ -447,6 +454,7 @@ export function ActivityLogPanel({ onRequestClose, className }: ActivityLogPanel
               >
                 <div className="mb-1.5 flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground">{levelIcon[log.level] ?? levelIcon.info}</span>
                     {filter === 'all' ? (
                       <Badge variant={levelVariant[log.level] ?? 'secondary'}>
                         {levelLabel[log.level] ?? log.level}

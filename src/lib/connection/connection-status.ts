@@ -29,8 +29,8 @@ export const getConnectionStatusPresentation = (
   }
 
   if (hasError) {
-    return { label: 'Lỗi kết nối', tone: 'destructive', hasError: true };
+    return { label: 'Mất kết nối', tone: 'destructive', hasError: true };
   }
 
-  return { label: 'Chưa kết nối', tone: 'secondary', hasError: false };
+  return { label: 'Mất kết nối', tone: 'secondary', hasError: false };
 };

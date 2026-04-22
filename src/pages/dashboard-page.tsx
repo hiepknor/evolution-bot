@@ -1,12 +1,20 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import { ComposerPanel } from '@/components/composer/composer-panel';
-import { HistoryPanel } from '@/components/campaigns/history-panel';
 import { OperationsPanel } from '@/components/composer/operations-panel';
 import { GroupsPanel } from '@/components/groups/groups-panel';
-import { ActivityLogFloatingModal } from '@/components/logs/activity-log-floating-modal';
 import { PreviewPanel } from '@/components/preview/preview-panel';
 import type { ScreenFlag } from '@/hooks/use-screen-flag';
+
+const HistoryPanel = lazy(async () => {
+  const module = await import('@/components/campaigns/history-panel');
+  return { default: module.HistoryPanel };
+});
+
+const ActivityLogFloatingModal = lazy(async () => {
+  const module = await import('@/components/logs/activity-log-floating-modal');
+  return { default: module.ActivityLogFloatingModal };
+});
 
 type LeftTab = 'content' | 'operations' | 'history';
 const LEFT_TABS: Array<{ id: LeftTab; label: string }> = [
@@ -111,7 +119,9 @@ export function DashboardPage({ screenFlag, onOpenConnectionSettings }: Dashboar
             ) : null}
             {activeTab === 'history' ? (
               <div id="left-panel-history" role="tabpanel" aria-labelledby="left-tab-history">
-                <HistoryPanel />
+                <Suspense fallback={<div className="p-3 text-sm text-muted-foreground">Đang tải lịch sử...</div>}>
+                  <HistoryPanel />
+                </Suspense>
               </div>
             ) : null}
           </div>
@@ -122,7 +132,9 @@ export function DashboardPage({ screenFlag, onOpenConnectionSettings }: Dashboar
         </section>
       </main>
 
-      <ActivityLogFloatingModal screenFlag={screenFlag} />
+      <Suspense fallback={null}>
+        <ActivityLogFloatingModal screenFlag={screenFlag} />
+      </Suspense>
     </>
   );
 }
