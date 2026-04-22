@@ -7,6 +7,8 @@ src-tauri/target/
 .DS_Store
 *.log
 *.tsbuildinfo
+.gitnexus/lbug
+.gitnexus/*.db
 
 coverage/
 
