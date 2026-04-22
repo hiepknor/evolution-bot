@@ -162,7 +162,7 @@ export function PreviewPanel({ mode = 'standalone' }: PreviewPanelProps): JSX.El
               {selectedGroup ? 'Đã chọn nhóm' : 'Chưa chọn nhóm'}
             </Badge>
             <Badge variant={composer.imagePath ? 'success' : 'secondary'}>
-              {composer.imagePath ? 'Có ảnh' : 'Không ảnh'}
+              {composer.imagePath ? 'Có ảnh' : 'Chưa có ảnh'}
             </Badge>
             <Badge variant={hasContent ? 'success' : 'warning'}>{`${charCount} ký tự`}</Badge>
           </div>
@@ -182,7 +182,7 @@ export function PreviewPanel({ mode = 'standalone' }: PreviewPanelProps): JSX.El
               embedded ? 'min-h-[240px]' : 'h-full min-h-0'
             )}
           >
-            <div className={cn(panelTokens.sectionTitle, 'mb-2 text-muted-foreground')}>Ảnh xem trước</div>
+            <div className={cn(panelTokens.sectionTitle, 'mb-2 text-[hsl(var(--text-strong))]')}>Ảnh xem trước</div>
             <div
               className={cn(
                 'flex items-start justify-center overflow-hidden rounded-lg bg-background/30 p-3',
@@ -236,7 +236,7 @@ export function PreviewPanel({ mode = 'standalone' }: PreviewPanelProps): JSX.El
               embedded ? 'min-h-[240px]' : 'h-full min-h-0'
             )}
           >
-            <div className={cn(panelTokens.sectionTitle, 'mb-2 text-muted-foreground')}>Tin nhắn mô phỏng</div>
+            <div className={cn(panelTokens.sectionTitle, 'mb-2 text-[hsl(var(--text-strong))]')}>Nội dung tin nhắn</div>
             <div
               className={cn(
                 'rounded-xl border border-border/45 bg-background/30 p-3',
@@ -248,7 +248,7 @@ export function PreviewPanel({ mode = 'standalone' }: PreviewPanelProps): JSX.El
                   <div className="w-full max-w-[min(100%,540px)] rounded-[20px] rounded-bl-md border border-primary/35 bg-accent/35 px-3.5 py-3 shadow-[0_10px_30px_-22px_hsl(var(--primary))]">
                     <div className="mb-2 flex items-center justify-between gap-2">
                       <span className="truncate text-sm font-semibold tracking-wide text-primary">
-                        Preview Broadcast
+                        Bản tin xem trước
                       </span>
                       <span className="text-sm text-muted-foreground">{charCount} ký tự</span>
                     </div>
@@ -258,7 +258,7 @@ export function PreviewPanel({ mode = 'standalone' }: PreviewPanelProps): JSX.El
                   </div>
                 ) : (
                   <div className="flex h-full min-h-0 flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
-                    <span>Nội dung xem trước đang trống.</span>
+                    <span className="font-medium">Chưa có nội dung xem trước</span>
                     <span>Hãy nhập mẫu nội dung hoặc chọn chiến dịch để dùng lại nội dung.</span>
                   </div>
                 )}

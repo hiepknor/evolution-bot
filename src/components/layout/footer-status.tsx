@@ -42,31 +42,30 @@ export function FooterStatus(): JSX.Element {
   const [liveEtaMs, setLiveEtaMs] = useState<number>(0);
   const etaAnchorRef = useRef<{ baseMs: number; startedAtMs: number } | null>(null);
 
-  const percent = progress && progress.total > 0
-    ? (progress.processed / progress.total) * 100
-    : 0;
+  const percent = progress && progress.total > 0 ? (progress.processed / progress.total) * 100 : 0;
   const roundedPercent = Number.isFinite(percent) ? Math.round(percent) : 0;
   const processed = progress?.processed ?? 0;
   const total = progress?.total ?? 0;
   const campaignStatus = activeCampaign?.status ?? 'draft';
   const liveMode = running || stopping;
-  const finishedMode =
-    !liveMode && (campaignStatus === 'completed' || campaignStatus === 'failed' || campaignStatus === 'stopped');
+  const finishedMode = !liveMode && ['completed', 'failed', 'stopped'].includes(campaignStatus);
   const showLastRunHint = finishedMode && badgeState === 'disconnected';
+
   const campaignStatusLabel =
     stopping
       ? 'Đang dừng'
       : campaignStatus === 'running'
-      ? paused
-        ? 'Tạm dừng'
-        : 'Đang chạy'
-      : campaignStatus === 'completed'
-        ? 'Hoàn tất'
-        : campaignStatus === 'failed'
-          ? 'Thất bại'
-          : campaignStatus === 'stopped'
-            ? 'Đã dừng'
-            : 'Nhàn rỗi';
+        ? paused
+          ? 'Tạm dừng'
+          : 'Đang chạy'
+        : campaignStatus === 'completed'
+          ? 'Hoàn tất'
+          : campaignStatus === 'failed'
+            ? 'Thất bại'
+            : campaignStatus === 'stopped'
+              ? 'Đã dừng'
+              : 'Nhàn rỗi';
+
   const campaignStatusVariant =
     stopping || campaignStatus === 'running'
       ? 'warning'
@@ -76,7 +75,8 @@ export function FooterStatus(): JSX.Element {
           ? 'destructive'
           : campaignStatus === 'stopped'
             ? 'warning'
-          : 'secondary';
+            : 'secondary';
+
   useEffect(() => {
     if (!liveMode || !progress) {
       etaAnchorRef.current = null;
@@ -122,46 +122,49 @@ export function FooterStatus(): JSX.Element {
           ? 'Sắp hoàn tất...'
           : formatRemainingTime(liveEtaMs)
     : '-';
-  const durationDisplay = finishedMode
-    ? formatCampaignDuration(activeCampaign?.startedAt, activeCampaign?.finishedAt)
-    : '-';
-  const progressSummary = total > 0
-    ? `Tiến độ: ${roundedPercent}% (${processed}/${total})`
-    : 'Chưa có chiến dịch đang theo dõi';
+
+  const durationDisplay = finishedMode ? formatCampaignDuration(activeCampaign?.startedAt, activeCampaign?.finishedAt) : '-';
+  const progressSummary = total > 0 ? `Tiến độ: ${roundedPercent}% (${processed}/${total})` : 'Chưa có chiến dịch đang theo dõi';
   const campaignName = activeCampaign?.name?.trim() || '';
   const campaignDisplay = campaignName || activeCampaign?.id || '-';
-  const campaignTitle = activeCampaign
-    ? `Tên: ${campaignName || '(chưa đặt)'}\nID: ${activeCampaign.id}`
-    : '-';
+  const campaignTitle = activeCampaign ? `Tên: ${campaignName || '(chưa đặt)'}\nID: ${activeCampaign.id}` : '-';
 
   return (
     <footer className="space-y-3 border-t border-border/80 bg-card/70 px-4 py-3">
-      <Progress value={percent} />
-      <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
-        <div>{progressSummary}</div>
-        <div className="flex items-center gap-2">
-          {showLastRunHint ? <span>Kết quả lần chạy gần nhất</span> : null}
-          <Badge
-            variant={campaignStatusVariant}
-            className="h-6 min-w-[84px] justify-center whitespace-nowrap rounded-full px-2"
-          >
-            {campaignStatusLabel}
-          </Badge>
+      <div className="rounded-lg border border-border/40 bg-background/35 px-3 py-2">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-sm text-foreground/90">
+          <div className="font-medium">{progressSummary}</div>
+          <div className="flex items-center gap-2">
+            {showLastRunHint ? <span className="text-xs text-muted-foreground">Kết quả lần chạy gần nhất</span> : null}
+            <Badge variant={campaignStatusVariant} className="h-6 min-w-[92px] justify-center whitespace-nowrap rounded-full px-2">
+              {campaignStatusLabel}
+            </Badge>
+          </div>
         </div>
+        <Progress value={percent} />
       </div>
-      <div className="grid grid-cols-1 gap-x-4 gap-y-2 text-xs text-foreground/90 sm:grid-cols-2 lg:grid-cols-7">
-        <div>Đã gửi thật: {progress?.sent ?? 0}</div>
-        <div>Chạy thử: {progress?.dryRunSuccess ?? 0}</div>
-        <div>Lỗi: {progress?.failed ?? 0}</div>
-        <div>Bỏ qua: {progress?.skipped ?? 0}</div>
-        <div>{finishedMode ? `Thời lượng: ${durationDisplay}` : `ETA (ước tính): ${etaDisplay}`}</div>
-        <div className="truncate" title={campaignTitle}>
-          Chiến dịch: {campaignDisplay}
+
+      <div className="grid grid-cols-1 gap-3 text-xs text-foreground/90 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="rounded-md border border-border/40 bg-background/35 px-3 py-2">
+          <p className="text-[11px] text-muted-foreground">Kết quả gửi</p>
+          <p className="mt-1">Thật: {progress?.sent ?? 0} • Thử: {progress?.dryRunSuccess ?? 0}</p>
         </div>
-        <div className="text-left sm:text-right">
-          {finishedMode
-            ? `Kết thúc: ${activeCampaign?.finishedAt ? dayjs(activeCampaign.finishedAt).format('HH:mm:ss') : '-'}`
-            : `Bắt đầu: ${activeCampaign?.startedAt ? dayjs(activeCampaign.startedAt).format('HH:mm:ss') : '-'}`}
+        <div className="rounded-md border border-border/40 bg-background/35 px-3 py-2">
+          <p className="text-[11px] text-muted-foreground">Lỗi và bỏ qua</p>
+          <p className="mt-1">Lỗi: {progress?.failed ?? 0} • Bỏ qua: {progress?.skipped ?? 0}</p>
+        </div>
+        <div className="rounded-md border border-border/40 bg-background/35 px-3 py-2">
+          <p className="text-[11px] text-muted-foreground">Thời gian</p>
+          <p className="mt-1">{finishedMode ? `Thời lượng: ${durationDisplay}` : `Ước tính còn lại: ${etaDisplay}`}</p>
+        </div>
+        <div className="rounded-md border border-border/40 bg-background/35 px-3 py-2" title={campaignTitle}>
+          <p className="text-[11px] text-muted-foreground">Chiến dịch hiện tại</p>
+          <p className="mt-1 truncate">{campaignDisplay}</p>
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            {finishedMode
+              ? `Kết thúc: ${activeCampaign?.finishedAt ? dayjs(activeCampaign.finishedAt).format('HH:mm:ss') : '-'}`
+              : `Bắt đầu: ${activeCampaign?.startedAt ? dayjs(activeCampaign.startedAt).format('HH:mm:ss') : '-'}`}
+          </p>
         </div>
       </div>
     </footer>
