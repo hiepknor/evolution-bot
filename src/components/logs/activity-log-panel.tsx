@@ -65,17 +65,17 @@ const levelIcon: Record<string, JSX.Element> = {
 };
 
 const levelItemTone: Record<string, string> = {
-  info: 'border-border/45 bg-background/70',
-  success: 'border-border/45 bg-background/70',
-  warn: 'border-border/45 bg-background/70',
-  error: 'border-border/45 bg-background/70'
+  info: 'border-border/40 bg-background/75',
+  success: 'border-border/40 bg-background/75',
+  warn: 'border-border/40 bg-background/75',
+  error: 'border-border/40 bg-background/75'
 };
 
 const levelBorderTone: Record<string, string> = {
-  info: 'border-l-primary/30',
-  success: 'border-l-success/55',
-  warn: 'border-l-warning/60',
-  error: 'border-l-destructive/60'
+  info: 'bg-primary/35',
+  success: 'bg-success/55',
+  warn: 'bg-warning/60',
+  error: 'bg-destructive/60'
 };
 
 interface ActivityLogPanelProps {
@@ -403,12 +403,19 @@ export function ActivityLogPanel({ onRequestClose, className, compact = false }:
   const renderLogItem = (log: CampaignLog | UiActivityLog): JSX.Element => (
     <article
       className={cn(
-        'rounded-md border border-l-2 px-3 py-2 text-[13px] transition-colors',
-        levelItemTone[log.level] ?? levelItemTone.info,
-        levelBorderTone[log.level] ?? levelBorderTone.info
+        'group relative overflow-hidden rounded-md border px-3 py-2.5 text-[13px] transition-colors',
+        levelItemTone[log.level] ?? levelItemTone.info
       )}
     >
-      <div className="mb-1.5 flex items-center justify-between gap-2">
+      <span
+        className={cn(
+          'absolute inset-y-0 left-0 w-[2px]',
+          levelBorderTone[log.level] ?? levelBorderTone.info
+        )}
+        aria-hidden
+      />
+
+      <div className="mb-1.5 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <span className="text-muted-foreground/80">{levelIcon[log.level] ?? levelIcon.info}</span>
           {filter === 'all' ? (
@@ -422,9 +429,11 @@ export function ActivityLogPanel({ onRequestClose, className, compact = false }:
             </Badge>
           ) : null}
         </div>
-        <span className="text-[11px] tabular-nums text-muted-foreground/90">{dayjs(log.createdAt).format('HH:mm:ss')}</span>
+        <span className="shrink-0 text-[11px] font-medium tabular-nums text-muted-foreground/85">
+          {dayjs(log.createdAt).format('HH:mm:ss')}
+        </span>
       </div>
-      <p className={cn('leading-[1.35rem] text-foreground/92', compact && 'truncate')}>
+      <p className={cn('pr-1 leading-[1.35rem] text-foreground/92', compact && 'truncate')}>
         {localizeLogMessage(log.message)}
       </p>
     </article>
