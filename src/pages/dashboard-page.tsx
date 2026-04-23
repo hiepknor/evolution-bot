@@ -1,5 +1,6 @@
+import type React from 'react';
 import { lazy, Suspense, useEffect, useState } from 'react';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown, ChevronUp, Clock, Eye, PenLine, Zap } from 'lucide-react';
 import { ComposerPanel } from '@/components/composer/composer-panel';
 import { OperationsPanel } from '@/components/composer/operations-panel';
 import { GroupsPanel } from '@/components/groups/groups-panel';
@@ -17,10 +18,10 @@ const ActivityLogFloatingModal = lazy(async () => {
 });
 
 type LeftTab = 'content' | 'operations' | 'history';
-const LEFT_TABS: Array<{ id: LeftTab; label: string }> = [
-  { id: 'content', label: 'Nội dung' },
-  { id: 'operations', label: 'Vận hành' },
-  { id: 'history', label: 'Lịch sử' }
+const LEFT_TABS: Array<{ id: LeftTab; label: string; icon: React.ElementType }> = [
+  { id: 'content', label: 'Nội dung', icon: PenLine },
+  { id: 'operations', label: 'Vận hành', icon: Zap },
+  { id: 'history', label: 'Lịch sử', icon: Clock }
 ];
 
 interface DashboardPageProps {
@@ -34,23 +35,25 @@ export function DashboardPage({ screenFlag, onOpenConnectionSettings }: Dashboar
   const isSmallScreen = screenFlag === 'small-screen';
   const isFullScreen = screenFlag === 'full-screen';
 
+  const tableDensity = 'comfortable';
+
   const mainClassName = isSmallScreen
-    ? 'grid flex-1 grid-cols-1 gap-3 overflow-auto p-3 sm:gap-4 sm:p-4'
+    ? 'grid flex-1 grid-cols-1 gap-3 overflow-auto p-3 transition-[grid-template-columns,gap,padding] duration-300 ease-out sm:gap-4 sm:p-4'
     : isFullScreen
-      ? 'grid flex-1 grid-cols-[minmax(420px,34%)_minmax(0,1fr)] gap-5 overflow-hidden px-6 py-5'
-      : 'grid flex-1 grid-cols-1 gap-4 overflow-hidden p-4 lg:grid-cols-[380px_minmax(0,1fr)]';
+      ? 'grid flex-1 grid-cols-[380px_minmax(0,1fr)] gap-4 overflow-hidden px-4 py-4 transition-[grid-template-columns,gap,padding] duration-300 ease-out'
+      : 'grid flex-1 grid-cols-1 gap-4 overflow-hidden p-4 transition-[grid-template-columns,gap,padding] duration-300 ease-out lg:grid-cols-[380px_minmax(0,1fr)]';
   const leftSectionClassName = isSmallScreen
-    ? 'flex flex-col gap-3'
+    ? 'flex flex-col gap-3 transition-[gap] duration-300 ease-out'
     : isFullScreen
-      ? 'flex min-h-0 flex-col gap-5 overflow-hidden'
-      : 'flex min-h-0 flex-col gap-4 overflow-hidden';
-  const tabGridClassName = 'grid min-w-0 grid-cols-3 gap-2';
+      ? 'flex min-h-0 min-w-0 flex-col gap-4 overflow-hidden transition-[gap] duration-300 ease-out'
+      : 'flex min-h-0 flex-col gap-4 overflow-hidden transition-[gap] duration-300 ease-out';
+  const tabGridClassName = 'flex w-full rounded-lg border border-border/35 bg-background/55 p-1 shadow-sm backdrop-blur-sm';
   const contentClassName = isSmallScreen ? 'overflow-visible' : 'min-h-0 flex-1 overflow-auto';
   const rightSectionClassName = isSmallScreen
-    ? 'grid grid-cols-1 gap-3'
+    ? 'grid grid-cols-1 gap-3 transition-[gap] duration-300 ease-out'
     : isFullScreen
-      ? 'flex min-h-0 flex-col gap-5 overflow-hidden'
-      : 'flex min-h-0 flex-col gap-4 overflow-hidden';
+      ? 'flex min-h-0 min-w-0 flex-col gap-4 overflow-hidden transition-[gap] duration-300 ease-out'
+      : 'flex min-h-0 flex-col gap-4 overflow-hidden transition-[gap] duration-300 ease-out';
 
   useEffect(() => {
     if (screenFlag === 'small-screen') {
@@ -65,24 +68,29 @@ export function DashboardPage({ screenFlag, onOpenConnectionSettings }: Dashboar
       <main className={mainClassName}>
         <section className={leftSectionClassName}>
           <div className={tabGridClassName} role="tablist" aria-label="Điều hướng khu vực bên trái">
-            {LEFT_TABS.map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                role="tab"
-                id={`left-tab-${tab.id}`}
-                aria-selected={activeTab === tab.id}
-                aria-controls={`left-panel-${tab.id}`}
-                className={`h-9 rounded-md border px-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
-                  activeTab === tab.id
-                    ? 'border-primary/60 bg-primary/90 text-primary-foreground shadow-[0_8px_22px_-16px_hsl(var(--primary))]'
-                    : 'border-border/60 bg-secondary/80 text-secondary-foreground hover:border-border/80 hover:bg-muted/60'
-                }`}
-                onClick={() => setActiveTab(tab.id)}
-              >
-                {tab.label}
-              </button>
-            ))}
+            {LEFT_TABS.map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  role="tab"
+                  id={`left-tab-${tab.id}`}
+                  aria-selected={isActive}
+                  aria-controls={`left-panel-${tab.id}`}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                    isActive
+                      ? 'bg-card text-foreground shadow-sm ring-1 ring-border/50'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <Icon className={`h-3.5 w-3.5 shrink-0 ${isActive ? 'text-primary' : ''}`} />
+                  {tab.label}
+                </button>
+              );
+            })}
           </div>
 
           <div className={contentClassName}>
@@ -93,21 +101,18 @@ export function DashboardPage({ screenFlag, onOpenConnectionSettings }: Dashboar
                   {contentPreviewExpanded ? <PreviewPanel mode="embedded" /> : null}
                   <button
                     type="button"
-                    className="flex h-9 w-full items-center justify-between rounded-md border border-border/70 bg-muted/20 px-3 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-muted/35"
+                    className="flex h-9 w-full items-center justify-between rounded-lg border border-border/40 bg-background/40 px-3 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-background/60 hover:text-foreground"
                     onClick={() => setContentPreviewExpanded((prev) => !prev)}
                   >
-                    <span>Xem trước trực tiếp</span>
-                    <span className="inline-flex items-center gap-1">
-                      {contentPreviewExpanded ? (
-                        <>
-                          Thu gọn <ChevronUp className="h-3.5 w-3.5" />
-                        </>
-                      ) : (
-                        <>
-                          Mở xem trước <ChevronDown className="h-3.5 w-3.5" />
-                        </>
-                      )}
+                    <span className="flex items-center gap-1.5">
+                      <Eye className="h-3.5 w-3.5 shrink-0 text-primary/60" />
+                      Xem trước trực tiếp
                     </span>
+                    {contentPreviewExpanded ? (
+                      <ChevronUp className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60" />
+                    ) : (
+                      <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60" />
+                    )}
                   </button>
                 </div>
               </div>
@@ -128,7 +133,7 @@ export function DashboardPage({ screenFlag, onOpenConnectionSettings }: Dashboar
         </section>
 
         <section className={rightSectionClassName}>
-          <GroupsPanel onOpenConnectionSettings={onOpenConnectionSettings} />
+          <GroupsPanel onOpenConnectionSettings={onOpenConnectionSettings} density={tableDensity} />
         </section>
       </main>
 

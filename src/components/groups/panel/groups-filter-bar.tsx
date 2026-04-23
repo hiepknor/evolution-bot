@@ -1,11 +1,12 @@
 import type { RefObject } from 'react';
-import { Search, SlidersHorizontal, X } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { ChevronDown, Search, SlidersHorizontal, X } from 'lucide-react';
+
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { panelTokens } from '@/components/layout/panel-tokens';
+import { cn } from '@/lib/utils/cn';
 import type { GroupFilterCounts, GroupPermissionFilterMode, GroupStatusFilterMode } from '@/lib/groups/group-filtering';
 import { GroupsFilterChips } from '@/components/groups/panel/groups-filter-chips';
+
 interface GroupsFilterBarProps {
   searchInputRef: RefObject<HTMLInputElement>;
   searchInputValue: string;
@@ -33,6 +34,7 @@ interface GroupsFilterBarProps {
   clearAllFilters: () => void;
   filterCounts: GroupFilterCounts;
 }
+
 export function GroupsFilterBar(props: GroupsFilterBarProps): JSX.Element {
   const {
     searchInputRef,
@@ -60,11 +62,15 @@ export function GroupsFilterBar(props: GroupsFilterBarProps): JSX.Element {
     clearAllFilters,
     filterCounts
   } = props;
+
+  const hasAdvanced = showAdvancedFilters || hasMinMembersFilter;
+
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative min-w-[240px] flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        {/* Search */}
+        <div className="relative min-w-[200px] flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground/60" />
           <Input
             ref={searchInputRef}
             value={searchInputValue}
@@ -77,106 +83,128 @@ export function GroupsFilterBar(props: GroupsFilterBarProps): JSX.Element {
               setSearchTerm(nextValue);
             }}
             placeholder="Tìm theo tên nhóm hoặc chat id"
-            className={`${panelTokens.control} border-border/60 bg-background/60 pl-9 pr-9 placeholder:text-foreground/55`}
+            className={`${panelTokens.control} border-border/50 bg-background/55 pl-9 pr-9 placeholder:text-foreground/40`}
           />
           {searchInputValue.trim().length > 0 ? (
             <button
               type="button"
               onClick={clearSearchInput}
               className="absolute right-2 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              title="Xóa từ khóa tìm kiếm"
+              title="Xóa từ khóa"
               aria-label="Xóa từ khóa tìm kiếm"
             >
               <X className="h-3.5 w-3.5" />
             </button>
           ) : null}
         </div>
-        <div className="inline-flex items-center rounded-lg border border-border/45 bg-background/25 p-1">
-          <Button
-            size="sm"
-            variant={statusFilterMode === 'all' ? 'default' : 'ghost'}
-            onClick={() => setStatusFilterMode('all')}
-            className={`${panelTokens.control} px-3.5 ${statusFilterMode === 'all' ? '' : 'text-muted-foreground hover:text-foreground'}`}
-          >
-            {statusFilterMode === 'all' ? `Tất cả (${filterCounts.status.all})` : 'Tất cả'}
-          </Button>
-          <Button
-            size="sm"
-            variant={statusFilterMode === 'pending' ? 'default' : 'ghost'}
-            onClick={() => setStatusFilterMode('pending')}
-            className={`${panelTokens.control} px-3.5 ${statusFilterMode === 'pending' ? '' : 'text-muted-foreground hover:text-foreground'}`}
-          >
-            {statusFilterMode === 'pending' ? `Chưa gửi (${filterCounts.status.pending})` : 'Chưa gửi'}
-          </Button>
-          <Button
-            size="sm"
-            variant={statusFilterMode === 'sent' ? 'default' : 'ghost'}
-            onClick={() => setStatusFilterMode('sent')}
-            className={`${panelTokens.control} px-3.5 ${statusFilterMode === 'sent' ? '' : 'text-muted-foreground hover:text-foreground'}`}
-          >
-            {statusFilterMode === 'sent' ? `Đã gửi (${filterCounts.status.sent})` : 'Đã gửi'}
-          </Button>
-          <Button
-            size="sm"
-            variant={statusFilterMode === 'dry-run-success' ? 'default' : 'ghost'}
-            onClick={() => setStatusFilterMode('dry-run-success')}
-            className={`${panelTokens.control} px-3.5 ${statusFilterMode === 'dry-run-success' ? '' : 'text-muted-foreground hover:text-foreground'}`}
-          >
-            {statusFilterMode === 'dry-run-success'
-              ? `Chạy thử (${filterCounts.status.dryRunSuccess})`
-              : 'Chạy thử'}
-          </Button>
+
+        {/* Status segmented control */}
+        <div className={cn(panelTokens.toolbar, 'inline-flex shrink-0 p-1')}>
+          {(
+            [
+              { mode: 'all', label: 'Tất cả', count: filterCounts.status.all },
+              { mode: 'pending', label: 'Chưa gửi', count: filterCounts.status.pending },
+              { mode: 'sent', label: 'Đã gửi', count: filterCounts.status.sent },
+              { mode: 'dry-run-success', label: 'Chạy thử', count: filterCounts.status.dryRunSuccess }
+            ] as { mode: GroupStatusFilterMode; label: string; count: number }[]
+          ).map(({ mode, label, count }) => {
+            const isActive = statusFilterMode === mode;
+            return (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => setStatusFilterMode(mode)}
+                className={cn(
+                  'inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-sm font-medium transition-all',
+                  isActive
+                    ? 'bg-background text-foreground shadow-sm ring-1 ring-border/50'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                {label}
+                {isActive ? (
+                  <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] tabular-nums text-primary">
+                    {count}
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
         </div>
-        <Select
-          value={permissionFilterMode}
-          onValueChange={(value) => setPermissionFilterMode(value as GroupPermissionFilterMode)}
-        >
-          <SelectTrigger className={`${panelTokens.control} w-[176px] border-border/60 bg-background/60`}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Mọi quyền</SelectItem>
-            <SelectItem value="allowed">Gửi được</SelectItem>
-            <SelectItem value="unknown">Cần kiểm tra</SelectItem>
-            <SelectItem value="blocked">Không gửi được</SelectItem>
-          </SelectContent>
-        </Select>
-        <Button
-          size="sm"
-          variant={showAdvancedFilters || hasMinMembersFilter ? 'secondary' : 'outline'}
+
+        {/* Permission filter — styled select */}
+        <div className="relative shrink-0">
+          <select
+            value={permissionFilterMode}
+            onChange={(event) => setPermissionFilterMode(event.target.value as GroupPermissionFilterMode)}
+            className={cn(
+              panelTokens.control,
+              'h-10 w-[152px] appearance-none rounded-lg border border-border/50 bg-background/55',
+              'pl-3 pr-8 text-sm text-foreground',
+              permissionFilterMode !== 'all' ? 'border-success/30 bg-success/[0.06] text-success' : ''
+            )}
+            aria-label="Lọc quyền gửi"
+          >
+            <option value="all">Mọi quyền</option>
+            <option value="allowed">Gửi được</option>
+            <option value="unknown">Cần kiểm tra</option>
+            <option value="blocked">Không gửi được</option>
+          </select>
+          <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground/60" />
+        </div>
+
+        {/* Advanced toggle */}
+        <button
+          type="button"
           onClick={() => setShowAdvancedFilters((prev) => !prev)}
-          className={`${panelTokens.control} gap-1.5 px-3`}
+          className={cn(
+            panelTokens.control,
+            'inline-flex h-10 shrink-0 items-center gap-1.5 rounded-lg border px-3 text-sm font-medium transition-colors',
+            hasAdvanced
+              ? 'border-primary/30 bg-primary/[0.07] text-primary hover:bg-primary/10'
+              : 'border-border/50 bg-background/55 text-muted-foreground hover:border-border/70 hover:text-foreground'
+          )}
+          title={showAdvancedFilters ? 'Ẩn bộ lọc nâng cao' : 'Hiện bộ lọc nâng cao'}
         >
-          <SlidersHorizontal className="h-4 w-4" />
-          Bộ lọc nâng cao
-        </Button>
-      </div>
-      {showAdvancedFilters ? (
-        <div className="flex flex-wrap items-end gap-2 rounded-lg border border-border/30 bg-muted/[0.08] p-2">
-          <div className="space-y-1">
-            <p className="text-xs font-medium text-muted-foreground">Tối thiểu thành viên</p>
-            <Input
-              type="number"
-              min={0}
-              step={1}
-              value={minMembersInput}
-              onChange={(event) => setMinMembersInput(event.target.value)}
-              placeholder="Nhập số"
-              className={`${panelTokens.control} w-[180px] border-border/60 bg-background/60`}
-            />
-          </div>
+          <SlidersHorizontal className="h-3.5 w-3.5" />
+          Nâng cao
           {hasMinMembersFilter ? (
-            <Button
-              size="sm"
-              variant="outline"
-              className={`${panelTokens.control} px-3`}
-              onClick={() => setMinMembersInput('')}
-            >
-              Xóa mức tối thiểu
-            </Button>
+            <span className="h-1.5 w-1.5 rounded-full bg-primary" />
           ) : null}
+        </button>
+      </div>
+
+      {/* Advanced panel */}
+      {showAdvancedFilters ? (
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border/30 bg-muted/[0.06] px-3 py-2.5">
+          <div className="space-y-1">
+            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Tối thiểu thành viên</p>
+            <div className="flex items-center gap-2">
+              <Input
+                type="number"
+                min={0}
+                step={1}
+                value={minMembersInput}
+                onChange={(event) => setMinMembersInput(event.target.value)}
+                placeholder="Nhập số"
+                className={`${panelTokens.control} w-[140px] border-border/40 bg-background/60 tabular-nums`}
+              />
+              {hasMinMembersFilter ? (
+                <button
+                  type="button"
+                  onClick={() => setMinMembersInput('')}
+                  className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground"
+                  title="Xóa bộ lọc"
+                  aria-label="Xóa bộ lọc thành viên tối thiểu"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              ) : null}
+            </div>
+          </div>
         </div>
       ) : null}
+
       <GroupsFilterChips
         hasAnyFilter={hasAnyFilter}
         hasSearchFilter={hasSearchFilter}

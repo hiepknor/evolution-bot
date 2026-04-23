@@ -1,5 +1,6 @@
 import { lazy, Suspense } from 'react';
 import dayjs from 'dayjs';
+import { PenLine } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -29,11 +30,16 @@ export function ComposerPanel(): JSX.Element {
   const draft = useComposerDraft({ composer });
 
   return (
-    <Card>
-      <CardHeader className={panelTokens.cardHeader}>
-        <CardTitle>Nội dung</CardTitle>
+    <Card className="border-border/70 bg-card/70">
+      <CardHeader className="border-b border-border/70 px-4 py-3">
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+            <PenLine className="h-3.5 w-3.5" />
+          </div>
+          <CardTitle className="text-sm font-semibold leading-none text-foreground">Nội dung</CardTitle>
+        </div>
       </CardHeader>
-      <CardContent className={panelTokens.cardContent}>
+      <CardContent className="p-4 pt-3 space-y-3">
         {composer.contentSource ? (
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-primary/35 bg-primary/10 p-3 text-sm">
             <span className="text-primary-foreground/90">

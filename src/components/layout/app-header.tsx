@@ -1,6 +1,7 @@
-import { Settings2, Wifi } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
+import { Loader2, RadioTower, Settings2, Wifi } from 'lucide-react';
+
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils/cn';
 import { getConnectionStatusPresentation } from '@/lib/connection/connection-status';
 import { useSettingsStore } from '@/stores/use-settings-store';
 
@@ -17,42 +18,76 @@ export function AppHeader({ connectionSettingsOpen, onOpenConnectionSettings }: 
   const connectionStatus = getConnectionStatusPresentation(badgeState, statusMessage);
   const displayInstance =
     badgeState === 'connected'
-      ? connectedInstanceName ?? settings?.instanceName ?? 'Chưa có instance'
+      ? (connectedInstanceName ?? settings?.instanceName ?? 'Chưa có instance')
       : 'Chưa có instance';
 
+  const statusPillClass =
+    connectionStatus.tone === 'success'
+      ? 'border-success/40 bg-success/[0.1] text-success'
+      : connectionStatus.tone === 'warning'
+        ? 'border-warning/40 bg-warning/[0.1] text-warning'
+        : connectionStatus.tone === 'destructive'
+          ? 'border-destructive/40 bg-destructive/[0.1] text-destructive'
+          : 'border-border/50 bg-muted/25 text-muted-foreground';
+
   return (
-    <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border/80 bg-card/70 px-4 py-3 backdrop-blur">
-      <div className="min-w-0 flex-1">
-        <h1 className="text-lg font-semibold tracking-wide text-[hsl(var(--text-strong))]">Evo Broadcast Control</h1>
-        <p className="text-sm text-muted-foreground">Điều phối nhóm WhatsApp và chiến dịch broadcast.</p>
+    <header className="flex items-center justify-between gap-4 border-b border-border/80 bg-card/70 px-4 py-2.5 backdrop-blur">
+      {/* Brand */}
+      <div className="flex min-w-0 items-center gap-3">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-primary/20 bg-primary/10 text-primary">
+          <RadioTower className="h-4 w-4" />
+        </div>
+        <div className="min-w-0">
+          <h1 className="text-sm font-semibold leading-none tracking-wide text-[hsl(var(--text-strong))]">
+            Evo Broadcast Control
+          </h1>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">
+            Điều phối nhóm WhatsApp và chiến dịch broadcast.
+          </p>
+        </div>
       </div>
 
-      <div className="flex w-full flex-wrap items-center justify-start gap-2 sm:ml-auto sm:w-auto sm:justify-end">
-        <Badge
-          variant="neutral"
-          className="h-8 max-w-full items-center truncate px-3 text-sm leading-none sm:max-w-[220px]"
+      {/* Right controls */}
+      <div className="flex shrink-0 items-center gap-2">
+        {/* Instance pill */}
+        <div
+          className="hidden items-center gap-1.5 rounded-full border border-border/35 bg-background/40 px-2.5 py-1 text-xs text-muted-foreground sm:flex"
           title={displayInstance}
         >
-          Phiên làm việc: {displayInstance}
-        </Badge>
-        <Badge
-          variant={connectionStatus.tone}
-          className="h-8 items-center gap-1 px-3 text-sm leading-none"
+          <div className={cn(
+            'h-1.5 w-1.5 shrink-0 rounded-full',
+            badgeState === 'connected' ? 'bg-success shadow-[0_0_5px_hsl(var(--success))]' : 'bg-muted-foreground/40'
+          )} />
+          <span className="max-w-[180px] truncate">{displayInstance}</span>
+        </div>
+
+        {/* Connection status pill */}
+        <div
+          className={cn(
+            'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium',
+            statusPillClass
+          )}
           title={statusMessage}
         >
-          <Wifi className={`h-3.5 w-3.5 ${badgeState === 'checking' ? 'animate-pulse' : ''}`} />
+          {badgeState === 'checking' ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+            <Wifi className="h-3 w-3" />
+          )}
           {connectionStatus.label}
-        </Badge>
+        </div>
+
+        {/* Settings button */}
         <Button
           type="button"
           variant={connectionSettingsOpen ? 'secondary' : 'outline'}
           size="icon"
-          className="h-9 w-9"
+          className="h-8 w-8 rounded-lg border-border/50"
           aria-label="Mở cài đặt kết nối"
           title="Cài đặt kết nối"
           onClick={onOpenConnectionSettings}
         >
-          <Settings2 className="h-4 w-4" />
+          <Settings2 className="h-3.5 w-3.5" />
         </Button>
       </div>
     </header>

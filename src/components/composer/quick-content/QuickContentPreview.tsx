@@ -1,5 +1,7 @@
-import { Button } from '@/components/ui/button';
+import { PenLine, RefreshCw } from 'lucide-react';
+
 import { AlertDialogCancel } from '@/components/ui/alert-dialog';
+import { Button } from '@/components/ui/button';
 import { panelTokens } from '@/components/layout/panel-tokens';
 import { cn } from '@/lib/utils/cn';
 import type { ApplyMode } from '@/components/composer/quick-content/types';
@@ -20,32 +22,72 @@ export function QuickContentPreview({
   previewText: string;
 }): JSX.Element {
   return (
-    <div className="flex flex-col items-stretch justify-between gap-3 border-t border-border/45 bg-background/35 px-5 py-3 sm:flex-row sm:items-center">
-      <div className="flex min-w-0 flex-col gap-2.5 sm:flex-row sm:items-center sm:gap-3">
-        <div className={cn(panelTokens.toolbar, 'inline-flex w-full flex-wrap p-1 sm:w-auto')}>
-          <Button type="button" size="sm" variant={applyMode === 'insert' ? 'default' : 'ghost'} onClick={() => setApplyMode('insert')} className={`${panelTokens.control} flex-1 rounded-lg px-4 sm:flex-none`}>
-            Chèn vào vị trí con trỏ
-          </Button>
-          <Button type="button" size="sm" variant={applyMode === 'replace' ? 'default' : 'ghost'} onClick={() => setApplyMode('replace')} className={`${panelTokens.control} flex-1 rounded-lg px-4 sm:flex-none`}>
-            Thay toàn bộ mẫu
-          </Button>
-        </div>
-        <div className="flex min-h-10 flex-wrap items-center gap-2">
-          <span className="rounded-full border border-border/35 bg-background/55 px-3 py-1 text-xs text-muted-foreground">{selectedCount} dòng đã chọn</span>
-          <span className="rounded-full border border-border/35 bg-background/55 px-3 py-1 text-xs text-muted-foreground">{applyMode === 'insert' ? 'Chèn vào vị trí con trỏ' : 'Thay toàn bộ mẫu'}</span>
-        </div>
-      </div>
-      <div className="flex items-center justify-end gap-2">
-        <AlertDialogCancel className={`${panelTokens.control} min-w-[104px] rounded-lg px-4`}>Đóng</AlertDialogCancel>
-        <Button type="button" onClick={onApply} disabled={!hasSelection} className={`${panelTokens.control} min-w-[196px] rounded-lg px-5`}>
-          Chèn vào mẫu nội dung
-        </Button>
-      </div>
+    <div className="border-t border-border/50 bg-card/95 backdrop-blur-sm">
+      {/* Preview text bar */}
       {previewText ? (
-        <div className="w-full rounded-lg border border-border/35 bg-background/50 px-3 py-2 text-xs text-muted-foreground">
-          Xem nhanh: {previewText}
+        <div className="border-b border-border/35 px-5 py-2">
+          <p className="truncate text-[11px] text-muted-foreground">
+            <span className="mr-1.5 font-medium text-foreground/60">Xem nhanh:</span>
+            {previewText}
+          </p>
         </div>
       ) : null}
+
+      {/* Actions row */}
+      <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
+        {/* Apply mode toggle */}
+        <div className="flex items-center gap-2">
+          <div className={cn(panelTokens.toolbar, 'inline-flex p-1')}>
+            <button
+              type="button"
+              onClick={() => setApplyMode('insert')}
+              className={cn(
+                'inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-xs font-medium transition-all',
+                applyMode === 'insert'
+                  ? 'bg-background text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              <PenLine className="h-3.5 w-3.5" />
+              Chèn vào con trỏ
+            </button>
+            <button
+              type="button"
+              onClick={() => setApplyMode('replace')}
+              className={cn(
+                'inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-xs font-medium transition-all',
+                applyMode === 'replace'
+                  ? 'bg-background text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              <RefreshCw className="h-3 w-3" />
+              Thay toàn bộ mẫu
+            </button>
+          </div>
+
+          {selectedCount > 0 ? (
+            <span className="rounded-full border border-border/35 bg-background/55 px-2.5 py-1 text-[10px] tabular-nums text-muted-foreground">
+              {selectedCount} dòng đã chọn
+            </span>
+          ) : null}
+        </div>
+
+        {/* Buttons */}
+        <div className="flex items-center gap-2">
+          <AlertDialogCancel className={`${panelTokens.control} min-w-[88px] rounded-lg px-4`}>
+            Đóng
+          </AlertDialogCancel>
+          <Button
+            type="button"
+            onClick={onApply}
+            disabled={!hasSelection}
+            className={`${panelTokens.control} min-w-[180px] rounded-lg px-5`}
+          >
+            Chèn vào mẫu nội dung
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }

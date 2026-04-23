@@ -1,4 +1,11 @@
 import { HttpClient } from '@/lib/api/http-client';
+import {
+  evolutionGroupDtoSchema,
+  evolutionInstanceDtoSchema,
+  evolutionSendMediaRequestSchema,
+  evolutionSendTextRequestSchema,
+  evolutionSettingsDtoSchema
+} from '@/lib/api/api-schemas';
 import type {
   EvolutionGroupDto,
   EvolutionInstanceDto,
@@ -342,6 +349,21 @@ const isLikelyGroupDtoObject = (obj: Record<string, unknown>): boolean => {
   ].some((key) => key in obj);
 };
 
+const parseEvolutionGroupDto = (value: unknown): EvolutionGroupDto | null => {
+  const parsed = evolutionGroupDtoSchema.safeParse(value);
+  return parsed.success ? (parsed.data as EvolutionGroupDto) : null;
+};
+
+const parseEvolutionInstanceDto = (value: unknown): EvolutionInstanceDto | null => {
+  const parsed = evolutionInstanceDtoSchema.safeParse(value);
+  return parsed.success ? (parsed.data as EvolutionInstanceDto) : null;
+};
+
+const parseEvolutionSettingsDto = (value: unknown): EvolutionSettingsDto | null => {
+  const parsed = evolutionSettingsDtoSchema.safeParse(value);
+  return parsed.success ? (parsed.data as EvolutionSettingsDto) : null;
+};
+
 const collectResponseHints = (value: unknown, depth = 0): string[] => {
   if (depth > 5 || value === null || value === undefined) {
     return [];
@@ -498,7 +520,10 @@ const extractGroupList = (value: unknown, depth = 0): EvolutionGroupDto[] => {
   const merged: EvolutionGroupDto[] = [];
 
   if (isLikelyGroupDtoObject(obj)) {
-    merged.push(obj as EvolutionGroupDto);
+    const parsedGroup = parseEvolutionGroupDto(obj);
+    if (parsedGroup) {
+      merged.push(parsedGroup);
+    }
   }
 
   for (const [key, candidate] of Object.entries(obj)) {
@@ -516,6 +541,36 @@ const extractGroupList = (value: unknown, depth = 0): EvolutionGroupDto[] => {
     merged.push(...extractGroupList(candidate, depth + 1));
   }
 
+  return merged;
+};
+
+const extractInstanceList = (value: unknown, depth = 0): EvolutionInstanceDto[] => {
+  if (depth > 8 || value === null || value === undefined) {
+    return [];
+  }
+
+  if (Array.isArray(value)) {
+    const merged: EvolutionInstanceDto[] = [];
+    for (const item of value) {
+      merged.push(...extractInstanceList(item, depth + 1));
+    }
+    return merged;
+  }
+
+  const obj = asRecord(value);
+  if (!obj) {
+    return [];
+  }
+
+  const parsedInstance = parseEvolutionInstanceDto(obj);
+  if (parsedInstance) {
+    return [parsedInstance];
+  }
+
+  const merged: EvolutionInstanceDto[] = [];
+  for (const nested of Object.values(obj)) {
+    merged.push(...extractInstanceList(nested, depth + 1));
+  }
   return merged;
 };
 
@@ -1214,13 +1269,9 @@ export class EvolutionProvider implements MessagingProvider {
       path: '/instance/fetchInstances'
     });
 
-    if (Array.isArray(data)) {
-      return data
-        .map((entry) => extractInstanceName(entry))
-        .filter((item): item is string => Boolean(item));
-    }
-
-    return [];
+    return extractInstanceList(data)
+      .map((entry) => extractInstanceName(entry))
+      .filter((item): item is string => Boolean(item));
   }
 
   async fetchInstanceSyncSettings(instanceName: string): Promise<{ groupsIgnore: boolean | null }> {
@@ -1233,8 +1284,11 @@ export class EvolutionProvider implements MessagingProvider {
       path: `/settings/find/${encodedInstanceName}`,
       timeoutMs: SETTINGS_LOOKUP_TIMEOUT_MS
     });
+    const normalizedSettingsData =
+      parseEvolutionSettingsDto(settingsData) ??
+      (asRecord(settingsData) ? settingsData : { groups_ignore: undefined });
     return {
-      groupsIgnore: extractGroupsIgnoreFlag(settingsData)
+      groupsIgnore: extractGroupsIgnoreFlag(normalizedSettingsData)
     };
   }
 
@@ -1718,17 +1772,15 @@ export class EvolutionProvider implements MessagingProvider {
               path: '/instance/fetchInstances',
               timeoutMs: INSTANCE_LOOKUP_TIMEOUT_MS
             });
-            if (Array.isArray(instancesData)) {
-              const selectedInstance = instancesData.find((entry) => {
-                const name = extractInstanceName(entry).toLowerCase();
-                return name.length > 0 && name === trimmedInstanceName.toLowerCase();
-              });
-              if (selectedInstance) {
-                for (const id of buildSelfIdentifiers(selectedInstance)) {
-                  identifiers.add(id);
-                }
-                collectIdentifierHints(identifiers, selectedInstance);
+            const selectedInstance = extractInstanceList(instancesData).find((entry) => {
+              const name = extractInstanceName(entry).toLowerCase();
+              return name.length > 0 && name === trimmedInstanceName.toLowerCase();
+            });
+            if (selectedInstance) {
+              for (const id of buildSelfIdentifiers(selectedInstance)) {
+                identifiers.add(id);
               }
+              collectIdentifierHints(identifiers, selectedInstance);
             }
           } catch {
             // Keep best-effort identifiers from other probes below.
@@ -2255,11 +2307,12 @@ export class EvolutionProvider implements MessagingProvider {
         media: base64,
         caption: media.caption
       };
+      const validatedBody = evolutionSendMediaRequestSchema.parse(body);
 
       const result = await this.client.request<Record<string, unknown>>({
         method: 'POST',
         path: `/message/sendMedia/${instanceName}`,
-        body
+        body: validatedBody
       });
 
       return {
@@ -2273,11 +2326,12 @@ export class EvolutionProvider implements MessagingProvider {
       number: chatId,
       text: media.plainText ?? media.caption
     };
+    const validatedTextPayload = evolutionSendTextRequestSchema.parse(textPayload);
 
     const textResult = await this.client.request<Record<string, unknown>>({
       method: 'POST',
       path: `/message/sendText/${instanceName}`,
-      body: textPayload
+      body: validatedTextPayload
     });
 
     return {

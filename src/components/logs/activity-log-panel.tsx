@@ -1,13 +1,27 @@
 import dayjs from 'dayjs';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertCircle, AlertTriangle, CheckCircle2, Info, Search, Trash2, X } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { AlertCircle, AlertTriangle, ArrowDownUp, CheckCircle2, FileText, Info, Trash2, Search, X } from 'lucide-react';
+
+import { panelTokens } from '@/components/layout/panel-tokens';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
+} from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { panelTokens } from '@/components/layout/panel-tokens';
 import { cn } from '@/lib/utils/cn';
+import type { CampaignLog } from '@/lib/types/domain';
 import { useCampaignStore } from '@/stores/use-campaign-store';
+import type { UiActivityLog } from '@/stores/use-activity-log-store';
 import { useActivityLogStore } from '@/stores/use-activity-log-store';
 
 const levelVariant: Record<string, 'secondary' | 'success' | 'warning' | 'destructive'> = {
@@ -51,15 +65,23 @@ const levelIcon: Record<string, JSX.Element> = {
 };
 
 const levelItemTone: Record<string, string> = {
-  info: 'border-border/35 bg-background/35',
-  success: 'border-success/25 bg-success/5',
-  warn: 'border-warning/25 bg-warning/5',
-  error: 'border-destructive/25 bg-destructive/5'
+  info: 'border-border/40 bg-background/75',
+  success: 'border-border/40 bg-background/75',
+  warn: 'border-border/40 bg-background/75',
+  error: 'border-border/40 bg-background/75'
+};
+
+const levelBorderTone: Record<string, string> = {
+  info: 'bg-primary/35',
+  success: 'bg-success/55',
+  warn: 'bg-warning/60',
+  error: 'bg-destructive/60'
 };
 
 interface ActivityLogPanelProps {
   onRequestClose?: () => void;
   className?: string;
+  compact?: boolean;
 }
 
 const formatRemainingTime = (ms: number): string => {
@@ -118,11 +140,14 @@ const localizeLogMessage = (raw: string): string => {
   return raw;
 };
 
-export function ActivityLogPanel({ onRequestClose, className }: ActivityLogPanelProps = {}): JSX.Element {
+export function ActivityLogPanel({ onRequestClose, className, compact = false }: ActivityLogPanelProps = {}): JSX.Element {
   const [filter, setFilter] = useState<LogFilter>('all');
+  const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
   const [searchTerm, setSearchTerm] = useState('');
   const [searchInputValue, setSearchInputValue] = useState('');
   const [searchInputComposing, setSearchInputComposing] = useState(false);
+  const [clearDialogOpen, setClearDialogOpen] = useState(false);
+  const [undoSnapshot, setUndoSnapshot] = useState<{ uiLogs: UiActivityLog[]; campaignLogs: CampaignLog[] } | null>(null);
   const [liveEtaMs, setLiveEtaMs] = useState<number>(0);
   const [recentRunSnapshot, setRecentRunSnapshot] = useState<{
     status: RecentRunStatus;
@@ -130,24 +155,33 @@ export function ActivityLogPanel({ onRequestClose, className }: ActivityLogPanel
     total: number;
     campaignName?: string;
   } | null>(null);
+
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const etaAnchorRef = useRef<{ baseMs: number; startedAtMs: number } | null>(null);
   const prevRunningRef = useRef<boolean>(false);
   const clearSnapshotTimerRef = useRef<number | null>(null);
+  const clearUndoTimerRef = useRef<number | null>(null);
+  const logViewportRef = useRef<HTMLDivElement | null>(null);
+
   const running = useCampaignStore((state) => state.running);
   const paused = useCampaignStore((state) => state.paused);
   const queueProgress = useCampaignStore((state) => state.queueProgress);
   const activeCampaign = useCampaignStore((state) => state.activeCampaign);
   const campaignLogs = useCampaignStore((state) => state.logs);
   const clearCampaignLogs = useCampaignStore((state) => state.clearCampaignLogs);
+  const replaceCampaignLogs = useCampaignStore((state) => state.replaceCampaignLogs);
   const uiLogs = useActivityLogStore((state) => state.uiLogs);
   const clearUiLogs = useActivityLogStore((state) => state.clearUiLogs);
-  const logs = useMemo(
+  const replaceUiLogs = useActivityLogStore((state) => state.replaceUiLogs);
+
+  const mergedLogs = useMemo(() => [...uiLogs, ...campaignLogs], [campaignLogs, uiLogs]);
+  const orderedLogs = useMemo(
     () =>
-      [...uiLogs, ...campaignLogs].sort(
-        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      ),
-    [campaignLogs, uiLogs]
+      [...mergedLogs].sort((a, b) => {
+        const delta = new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        return sortOrder === 'newest' ? delta : -delta;
+      }),
+    [mergedLogs, sortOrder]
   );
   const deferredSearchTerm = useDeferredValue(searchTerm);
 
@@ -165,7 +199,7 @@ export function ActivityLogPanel({ onRequestClose, className }: ActivityLogPanel
 
   const filteredLogs = useMemo(() => {
     const term = deferredSearchTerm.trim().toLowerCase();
-    return logs.filter((log) => {
+    return orderedLogs.filter((log) => {
       if (filter !== 'all' && log.level !== filter) {
         return false;
       }
@@ -174,17 +208,18 @@ export function ActivityLogPanel({ onRequestClose, className }: ActivityLogPanel
       }
       return localizeLogMessage(log.message).toLowerCase().includes(term);
     });
-  }, [deferredSearchTerm, filter, logs]);
+  }, [deferredSearchTerm, filter, orderedLogs]);
+
   const filterCounts = useMemo(() => {
     const counts: Record<LogFilter, number> = {
-      all: logs.length,
+      all: mergedLogs.length,
       info: 0,
       success: 0,
       warn: 0,
       error: 0
     };
 
-    logs.forEach((log) => {
+    mergedLogs.forEach((log) => {
       if (log.level === 'info') counts.info += 1;
       if (log.level === 'success') counts.success += 1;
       if (log.level === 'warn') counts.warn += 1;
@@ -192,20 +227,73 @@ export function ActivityLogPanel({ onRequestClose, className }: ActivityLogPanel
     });
 
     return counts;
-  }, [logs]);
+  }, [mergedLogs]);
+
   const isAlmostDone = Boolean(
     running &&
-    !paused &&
-    queueProgress &&
-    queueProgress.total > 0 &&
-    queueProgress.processed < queueProgress.total &&
-    liveEtaMs <= 5000
+      !paused &&
+      queueProgress &&
+      queueProgress.total > 0 &&
+      queueProgress.processed < queueProgress.total &&
+      liveEtaMs <= 5000
   );
-const runningEtaLabel = paused
+
+  const runningEtaLabel = paused
     ? `Tạm dừng • Còn lại: ${formatRemainingTime(liveEtaMs)}`
     : isAlmostDone
       ? 'Sắp hoàn tất...'
       : `Ước tính còn lại: ${formatRemainingTime(liveEtaMs)}`;
+
+  const hasLogs = mergedLogs.length > 0;
+  const compactLogLimit = compact ? 60 : Number.POSITIVE_INFINITY;
+  const displayedLogs = useMemo(() => filteredLogs.slice(0, compactLogLimit), [compactLogLimit, filteredLogs]);
+  const hiddenLogCount = Math.max(0, filteredLogs.length - displayedLogs.length);
+  const virtualEnabled = !compact && displayedLogs.length > 120;
+  const rowVirtualizer = useVirtualizer({
+    count: displayedLogs.length,
+    getScrollElement: () => logViewportRef.current,
+    estimateSize: () => 78,
+    overscan: 10,
+    enabled: virtualEnabled,
+    measureElement: (element) => element?.getBoundingClientRect().height ?? 0
+  });
+  const virtualItems = rowVirtualizer.getVirtualItems();
+
+  const onConfirmClearLogs = (): void => {
+    if (!hasLogs) {
+      setClearDialogOpen(false);
+      return;
+    }
+
+    setUndoSnapshot({
+      uiLogs: [...uiLogs],
+      campaignLogs: [...campaignLogs]
+    });
+    clearUiLogs();
+    clearCampaignLogs();
+    setClearDialogOpen(false);
+
+    if (clearUndoTimerRef.current) {
+      window.clearTimeout(clearUndoTimerRef.current);
+    }
+    clearUndoTimerRef.current = window.setTimeout(() => {
+      setUndoSnapshot(null);
+      clearUndoTimerRef.current = null;
+    }, 8000);
+  };
+
+  const onUndoClearLogs = (): void => {
+    if (!undoSnapshot) {
+      return;
+    }
+    replaceUiLogs(undoSnapshot.uiLogs);
+    replaceCampaignLogs(undoSnapshot.campaignLogs);
+    setUndoSnapshot(null);
+    if (clearUndoTimerRef.current) {
+      window.clearTimeout(clearUndoTimerRef.current);
+      clearUndoTimerRef.current = null;
+    }
+  };
 
   useEffect(() => {
     const wasRunning = prevRunningRef.current;
@@ -231,6 +319,7 @@ const runningEtaLabel = paused
           total,
           campaignName: activeCampaign?.name
         });
+
         if (clearSnapshotTimerRef.current) {
           window.clearTimeout(clearSnapshotTimerRef.current);
         }
@@ -299,45 +388,147 @@ const runningEtaLabel = paused
     if (clearSnapshotTimerRef.current) {
       window.clearTimeout(clearSnapshotTimerRef.current);
     }
+    if (clearUndoTimerRef.current) {
+      window.clearTimeout(clearUndoTimerRef.current);
+    }
   }, []);
 
+  useEffect(() => {
+    if (!logViewportRef.current) {
+      return;
+    }
+    logViewportRef.current.scrollTo({ top: 0, behavior: 'auto' });
+  }, [filter, sortOrder, deferredSearchTerm]);
+
+  const renderLogItem = (log: CampaignLog | UiActivityLog): JSX.Element => (
+    <article
+      className={cn(
+        'group relative overflow-hidden rounded-md border px-3 py-2.5 text-[13px] transition-colors',
+        levelItemTone[log.level] ?? levelItemTone.info
+      )}
+    >
+      <span
+        className={cn(
+          'absolute inset-y-0 left-0 w-[2px]',
+          levelBorderTone[log.level] ?? levelBorderTone.info
+        )}
+        aria-hidden
+      />
+
+      <div className="mb-1.5 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <span className="text-muted-foreground/80">{levelIcon[log.level] ?? levelIcon.info}</span>
+          {filter === 'all' ? (
+            <Badge variant={levelVariant[log.level] ?? 'secondary'} className="h-5 rounded-full px-2 text-[10px] font-semibold">
+              {levelLabel[log.level] ?? log.level}
+            </Badge>
+          ) : null}
+          {'count' in log && typeof log.count === 'number' && log.count > 1 ? (
+            <Badge variant="outline" className="h-5 rounded-full px-1.5 text-[10px]">
+              x{log.count}
+            </Badge>
+          ) : null}
+        </div>
+        <span className="shrink-0 text-[11px] font-medium tabular-nums text-muted-foreground/85">
+          {dayjs(log.createdAt).format('HH:mm:ss')}
+        </span>
+      </div>
+      <p className={cn('pr-1 leading-[1.35rem] text-foreground/92', compact && 'truncate')}>
+        {localizeLogMessage(log.message)}
+      </p>
+    </article>
+  );
+
   return (
-    <Card className={cn('flex h-full min-h-0 flex-col overflow-hidden', className)}>
-      <CardHeader className={cn('flex flex-row items-start justify-between gap-2', panelTokens.cardHeader)}>
-        <CardTitle>Nhật ký hoạt động</CardTitle>
-        {onRequestClose ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className={cn('shrink-0', panelTokens.control)}
-            aria-label="Đóng nhật ký hoạt động"
-            onClick={onRequestClose}
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        ) : null}
-      </CardHeader>
-      <CardContent className={cn('flex min-h-0 flex-1 flex-col overflow-hidden', panelTokens.cardContent)}>
-        {running && queueProgress ? (
-          <div className="rounded-lg border border-primary/30 bg-primary/10 p-3">
-            <div className="mb-1 flex items-center justify-between">
-              <Badge variant="secondary">Thông tin</Badge>
-              <span className="text-xs text-primary">{runningEtaLabel}</span>
+    <Card className={cn('flex h-full min-h-0 flex-col overflow-hidden border-border/70 bg-card/70', className)}>
+      <CardHeader className="border-b border-border/70 px-4 py-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2.5">
+              <div className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+                <FileText className="h-3.5 w-3.5" />
+              </div>
+              <CardTitle className="text-sm font-semibold leading-none text-foreground">Nhật ký hoạt động</CardTitle>
             </div>
-            <p className="text-sm leading-5 text-foreground/90">
+            <div className="mt-1 flex items-center gap-2">
+              <span className="text-[10px] tabular-nums text-muted-foreground">
+                {mergedLogs.length} mục
+              </span>
+              <span className="text-border/60">·</span>
+              <span className="text-[10px] tabular-nums text-muted-foreground">
+                Hiển thị {displayedLogs.length}
+                {hiddenLogCount > 0 ? ` / ${filteredLogs.length}` : ''}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2.5">
+            {hasLogs ? (
+              <Button
+                size="sm"
+                variant="outline"
+                className={cn(
+                  '!h-8 gap-1.5 border-border/45 bg-background px-2.5 text-xs text-foreground/70 hover:border-destructive/35 hover:bg-destructive/10 hover:text-destructive',
+                  panelTokens.control
+                )}
+                title="Xóa toàn bộ nhật ký"
+                onClick={() => setClearDialogOpen(true)}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Xóa
+              </Button>
+            ) : null}
+            {onRequestClose ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 shrink-0 rounded-md border border-border/60"
+                aria-label="Đóng nhật ký hoạt động"
+                onClick={onRequestClose}
+              >
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      </CardHeader>
+
+      <CardContent className={cn('flex min-h-0 flex-1 flex-col overflow-hidden p-2.5 pt-2.5', panelTokens.cardContent)}>
+        {!compact && undoSnapshot ? (
+          <div className="flex items-center justify-between rounded-lg border border-warning/35 bg-warning/10 px-3 py-2 text-xs text-warning">
+            <span>Đã xóa log. Bạn có thể hoàn tác trong vài giây.</span>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-7 border-warning/35 px-2.5 text-xs text-warning hover:bg-warning/15"
+              onClick={onUndoClearLogs}
+            >
+              Hoàn tác
+            </Button>
+          </div>
+        ) : null}
+
+        {!compact && running && queueProgress ? (
+          <div className="rounded-lg border border-primary/30 bg-primary/10 px-2.5 py-2">
+            <div className="mb-1 flex items-center justify-between">
+              <Badge variant="secondary" className="h-5 rounded-full px-2 text-[10px]">Đang chạy</Badge>
+              <span className="text-xs text-primary/90">{runningEtaLabel}</span>
+            </div>
+            <p className="text-[13px] leading-[1.25rem] text-foreground/90">
               {paused ? 'Đang tạm dừng' : 'Đang chạy'} {queueProgress.processed}/{queueProgress.total}
               {activeCampaign?.name ? ` • ${activeCampaign.name}` : ''}.
             </p>
           </div>
-        ) : recentRunSnapshot ? (
+        ) : !compact && recentRunSnapshot ? (
           <div
             className={
               recentRunSnapshot.status === 'completed'
-                ? 'rounded-lg border border-emerald-400/30 bg-emerald-500/10 p-3'
+                ? 'rounded-lg border border-emerald-400/30 bg-emerald-500/10 px-2.5 py-2'
                 : recentRunSnapshot.status === 'failed'
-                  ? 'rounded-lg border border-destructive/40 bg-destructive/10 p-3'
-                  : 'rounded-lg border border-warning/40 bg-warning/10 p-3'
+                  ? 'rounded-lg border border-destructive/40 bg-destructive/10 px-2.5 py-2'
+                  : 'rounded-lg border border-warning/40 bg-warning/10 px-2.5 py-2'
             }
           >
             <div className="mb-1 flex items-center justify-between">
@@ -358,15 +549,16 @@ const runningEtaLabel = paused
               </Badge>
               <span className="text-xs text-muted-foreground">vừa xong</span>
             </div>
-            <p className="text-sm leading-5 text-foreground/90">
+            <p className="text-[13px] leading-[1.25rem] text-foreground/90">
               Kết thúc {recentRunSnapshot.processed}/{recentRunSnapshot.total}
               {recentRunSnapshot.campaignName ? ` • ${recentRunSnapshot.campaignName}` : ''}.
             </p>
           </div>
         ) : null}
-        <div className={panelTokens.section}>
+
+        <div className={cn(panelTokens.section, compact ? 'space-y-1.5 border-border/35 bg-card p-1.5' : 'space-y-2 border-border/35 bg-card p-2')}>
           <div className="relative min-w-0">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
               ref={searchInputRef}
               value={searchInputValue}
@@ -378,7 +570,10 @@ const runningEtaLabel = paused
                 setSearchInputValue(nextValue);
                 setSearchTerm(nextValue);
               }}
-              className={cn('border-border/60 bg-background/40 pl-9 pr-9', panelTokens.control)}
+              className={cn(
+                '!h-9 rounded-md border-border/45 bg-background pl-9 pr-9 text-[13px] focus-visible:border-primary/45 focus-visible:ring-1 focus-visible:ring-primary/40 focus-visible:ring-offset-0',
+                panelTokens.control
+              )}
               placeholder="Tìm theo nội dung log"
             />
             {searchInputValue.trim().length > 0 ? (
@@ -389,7 +584,7 @@ const runningEtaLabel = paused
                   setSearchTerm('');
                   searchInputRef.current?.focus();
                 }}
-                className="absolute right-2 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                className="absolute right-2 top-1/2 inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                 title="Xóa từ khóa tìm log"
                 aria-label="Xóa từ khóa tìm log"
               >
@@ -397,81 +592,129 @@ const runningEtaLabel = paused
               </button>
             ) : null}
           </div>
-          <div className="flex items-center gap-2">
+
+          <div className="flex items-stretch gap-2">
             <div
-              className="min-w-0 flex-1 overflow-x-auto rounded-lg border border-border/50 bg-background/30 p-1"
+              className="min-w-0 flex-1 overflow-x-auto rounded-lg border border-border/35 bg-background p-1"
               role="tablist"
               aria-label="Bộ lọc mức log"
             >
-              <div className="flex min-w-max items-center gap-0.5">
+              <div className="flex min-w-max items-center gap-1">
                 {(Object.keys(filterLabel) as LogFilter[]).map((key) => (
                   <button
                     key={key}
                     type="button"
                     role="tab"
                     aria-selected={filter === key}
-                    aria-pressed={filter === key}
-                    className={`inline-flex ${panelTokens.control} min-w-[112px] shrink-0 items-center justify-center whitespace-nowrap px-3 py-0 font-medium leading-none tabular-nums transition-colors ${
+                    className={cn(
+                      panelTokens.control,
+                      'inline-flex h-8 min-w-[90px] shrink-0 items-center justify-center gap-1 rounded-md px-2.5 text-[11px] font-medium tabular-nums transition-all',
                       filter === key
-                        ? 'bg-primary text-primary-foreground'
-                        : 'text-foreground/85 hover:bg-muted/50'
-                    }`}
+                        ? 'bg-card text-foreground ring-1 ring-border/45 shadow-sm'
+                        : 'text-foreground/68 hover:text-foreground'
+                    )}
                     onClick={() => setFilter(key)}
                   >
-                    <span className="sm:hidden">{`${filterShortLabel[key]} (${filterCounts[key]})`}</span>
-                    <span className="hidden sm:inline">{`${filterLabel[key]} (${filterCounts[key]})`}</span>
+                    <span className="sm:hidden">{filterShortLabel[key]}</span>
+                    <span className="hidden sm:inline">{filterLabel[key]}</span>
+                    <span
+                      className={cn(
+                        'rounded-full px-1.5 py-0.5 text-[10px] leading-none',
+                        filter === key ? 'bg-primary/15 text-primary' : 'bg-muted/40 text-muted-foreground'
+                      )}
+                    >
+                      {filterCounts[key]}
+                    </span>
                   </button>
                 ))}
               </div>
             </div>
             <Button
-              size="icon"
+              type="button"
+              size="sm"
               variant="outline"
-              className={cn('shrink-0 border-border/60', panelTokens.control)}
-              title="Xóa toàn bộ nhật ký"
-              onClick={() => {
-                clearUiLogs();
-                clearCampaignLogs();
-              }}
+              className={cn(
+                'shrink-0 border-border/35 bg-background px-3 text-[11px] font-medium text-foreground/80 hover:text-foreground',
+                '!h-10 min-w-[112px] rounded-lg',
+                panelTokens.control
+              )}
+              onClick={() => setSortOrder((prev) => (prev === 'newest' ? 'oldest' : 'newest'))}
+              title={sortOrder === 'newest' ? 'Đang sắp xếp mới nhất trước' : 'Đang sắp xếp cũ nhất trước'}
             >
-              <Trash2 className="h-4 w-4" />
+              <ArrowDownUp className="mr-1 h-3.5 w-3.5" />
+              {sortOrder === 'newest' ? 'Mới nhất' : 'Cũ nhất'}
             </Button>
           </div>
         </div>
-        <div className="flex-1 space-y-2 overflow-auto rounded-lg border border-border/35 bg-muted/[0.08] p-3">
-          {filteredLogs.length === 0 ? (
-            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-              {logs.length > 0 ? 'Không có log phù hợp bộ lọc hiện tại.' : 'Chưa có log nào.'}
-            </div>
-          ) : (
-            filteredLogs.map((log) => (
-              <article
-                key={log.id}
-                className={cn(
-                  'rounded-lg border p-3 text-sm transition-colors',
-                  levelItemTone[log.level] ?? levelItemTone.info
-                )}
-              >
-                <div className="mb-1.5 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-muted-foreground">{levelIcon[log.level] ?? levelIcon.info}</span>
-                    {filter === 'all' ? (
-                      <Badge variant={levelVariant[log.level] ?? 'secondary'}>
-                        {levelLabel[log.level] ?? log.level}
-                      </Badge>
-                    ) : null}
-                    {'count' in log && typeof log.count === 'number' && log.count > 1 ? (
-                      <Badge variant="outline">x{log.count}</Badge>
-                    ) : null}
-                  </div>
-                  <span className="text-xs text-muted-foreground">{dayjs(log.createdAt).format('HH:mm:ss')}</span>
-                </div>
-                <p className="leading-5 text-foreground/95">{localizeLogMessage(log.message)}</p>
-              </article>
-            ))
-          )}
+
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border/35 bg-card">
+          <div className="flex items-center justify-between border-b border-border/35 px-2.5 py-1.5 text-[11px] text-foreground/65">
+            <span>
+              {displayedLogs.length > 0
+                ? `Đang hiển thị ${displayedLogs.length} mục`
+                : hasLogs
+                  ? 'Không có kết quả phù hợp'
+                  : 'Danh sách trống'}
+            </span>
+            <span>{hiddenLogCount > 0 ? `+${hiddenLogCount} ẩn` : sortOrder === 'newest' ? 'Mới trước' : 'Cũ trước'}</span>
+          </div>
+
+          <div ref={logViewportRef} className="flex-1 overflow-auto p-2">
+            {displayedLogs.length === 0 ? (
+              <div className="flex h-full items-center justify-center text-sm text-foreground/62">
+                {hasLogs ? 'Không có log phù hợp bộ lọc hiện tại.' : 'Chưa có log nào.'}
+              </div>
+            ) : virtualEnabled ? (
+              <div className="relative w-full" style={{ height: `${rowVirtualizer.getTotalSize()}px` }}>
+                {virtualItems.map((item) => {
+                  const log = displayedLogs[item.index];
+                  if (!log) {
+                    return null;
+                  }
+
+                  return (
+                    <div
+                      key={log.id}
+                      data-index={item.index}
+                      ref={rowVirtualizer.measureElement}
+                      className="absolute left-0 top-0 w-full pb-2"
+                      style={{ transform: `translateY(${item.start}px)` }}
+                    >
+                      {renderLogItem(log)}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                {displayedLogs.map((log) => (
+                  <div key={log.id}>{renderLogItem(log)}</div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </CardContent>
+
+      <AlertDialog open={clearDialogOpen} onOpenChange={setClearDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Xóa toàn bộ nhật ký?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Hành động này sẽ xóa cả nhật ký giao diện và nhật ký chiến dịch đang hiển thị. Bạn vẫn có thể hoàn tác trong vài giây ngay sau khi xóa.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Hủy</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-white hover:bg-destructive/90"
+              onClick={onConfirmClearLogs}
+            >
+              Xóa toàn bộ
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 }

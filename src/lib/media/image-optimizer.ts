@@ -113,11 +113,23 @@ export const optimizeImageForCampaign = async (inputPath: string): Promise<Optim
   const targetWidth = Math.max(1, Math.round(sourceWidth * scale));
   const targetHeight = Math.max(1, Math.round(sourceHeight * scale));
   const displayName = sourcePath.split(/[\\/]/).pop() ?? 'image';
+  const sourceExt = mimeToExtension(sourceMime);
+  const sourceChecksum = hashBytes(sourceBytes);
+  const sourceRelativePath = `${OPTIMIZED_MEDIA_DIR}/${sourceChecksum}-${sourceWidth}x${sourceHeight}.${sourceExt}`;
+  const sourceAppDataPath = toAppDataImagePath(sourceRelativePath);
+
+  await mkdir(OPTIMIZED_MEDIA_DIR, {
+    baseDir: BaseDirectory.AppData,
+    recursive: true
+  });
 
   if (scale >= 1) {
+    // Always persist media inside AppData so it remains readable after app restart
+    // without depending on runtime-granted access to arbitrary external folders.
+    await writeFile(sourceRelativePath, sourceBytes, { baseDir: BaseDirectory.AppData });
     return {
       sourcePath,
-      optimizedPath: sourcePath,
+      optimizedPath: sourceAppDataPath,
       displayName,
       originalBytes: sourceBytes.byteLength,
       optimizedBytes: sourceBytes.byteLength,
@@ -148,11 +160,6 @@ export const optimizeImageForCampaign = async (inputPath: string): Promise<Optim
   const ext = mimeToExtension(outputMime);
   const checksum = hashBytes(optimizedBytes);
   const relativePath = `${OPTIMIZED_MEDIA_DIR}/${checksum}-${targetWidth}x${targetHeight}.${ext}`;
-
-  await mkdir(OPTIMIZED_MEDIA_DIR, {
-    baseDir: BaseDirectory.AppData,
-    recursive: true
-  });
   await writeFile(relativePath, optimizedBytes, { baseDir: BaseDirectory.AppData });
 
   return {

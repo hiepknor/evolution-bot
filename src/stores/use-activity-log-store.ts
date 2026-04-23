@@ -14,6 +14,7 @@ interface ActivityLogState {
   uiLogs: UiActivityLog[];
   pushUiLog: (input: { level: LogLevel; message: string }) => void;
   clearUiLogs: () => void;
+  replaceUiLogs: (logs: UiActivityLog[]) => void;
 }
 
 export const useActivityLogStore = create<ActivityLogState>((set) => ({
@@ -52,5 +53,6 @@ export const useActivityLogStore = create<ActivityLogState>((set) => ({
       };
     });
   },
-  clearUiLogs: () => set({ uiLogs: [] })
+  clearUiLogs: () => set({ uiLogs: [] }),
+  replaceUiLogs: (logs) => set({ uiLogs: [...logs].slice(-1000) })
 }));
