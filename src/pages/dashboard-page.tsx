@@ -35,7 +35,7 @@ export function DashboardPage({ screenFlag, onOpenConnectionSettings }: Dashboar
   const isSmallScreen = screenFlag === 'small-screen';
   const isFullScreen = screenFlag === 'full-screen';
 
-  const fullScreenDensity = isFullScreen ? 'compact' : 'comfortable';
+  const tableDensity = 'comfortable';
 
   const mainClassName = isSmallScreen
     ? 'grid flex-1 grid-cols-1 gap-3 overflow-auto p-3 transition-[grid-template-columns,gap,padding] duration-300 ease-out sm:gap-4 sm:p-4'
@@ -133,7 +133,7 @@ export function DashboardPage({ screenFlag, onOpenConnectionSettings }: Dashboar
         </section>
 
         <section className={rightSectionClassName}>
-          <GroupsPanel onOpenConnectionSettings={onOpenConnectionSettings} density={fullScreenDensity} />
+          <GroupsPanel onOpenConnectionSettings={onOpenConnectionSettings} density={tableDensity} />
         </section>
       </main>
 

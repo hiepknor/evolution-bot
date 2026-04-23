@@ -217,7 +217,7 @@ export function ConnectionSettingsModal({
               type="button"
               variant="ghost"
               size="icon"
-              className="h-9 w-9 rounded-md border border-border/60"
+              className="h-8 w-8 rounded-lg border border-border/50"
               aria-label="Đóng cài đặt kết nối"
               onClick={() => onOpenChange(false)}
             >

@@ -30,6 +30,7 @@ interface GroupsTableRowProps {
 
 export function GroupsTableRow({
   group,
+  density = 'comfortable',
   targetStatus,
   listPolicy,
   selected,
@@ -41,10 +42,11 @@ export function GroupsTableRow({
   onToggleListMembership,
   rowRef
 }: GroupsTableRowProps): JSX.Element {
+  const isCompact = density === 'compact';
   const rowTextClass = 'text-[13px]';
   const monoTextClass = 'text-[13px]';
   const badgeTextClass = 'h-5 whitespace-nowrap px-2 text-[11px]';
-  const actionButtonTextClass = 'h-[22px] gap-1 px-2 text-[11px]';
+  const actionButtonTextClass = 'h-6 gap-1.5 px-2.5 text-[11px] leading-none';
   const cellClass = 'px-2.5 py-1.5 align-middle';
   const centerCellClass = 'px-2 py-1.5 align-middle text-center';
   const permissionState = resolveEffectivePermissionState(group, listPolicy.blocked);
@@ -140,7 +142,7 @@ export function GroupsTableRow({
           type="button"
           onClick={() => void onCopyChatId(group.chatId)}
           title="Sao chép chat id"
-          className={`inline-flex h-[22px] w-[22px] items-center justify-center rounded-md transition-colors ${
+          className={`inline-flex ${isCompact ? 'h-[18px] w-[18px]' : 'h-[22px] w-[22px]'} items-center justify-center rounded-md transition-colors ${
             isCopied
               ? 'text-success'
               : 'text-muted-foreground/50 hover:bg-muted hover:text-muted-foreground'
@@ -168,31 +170,33 @@ export function GroupsTableRow({
       </td>
 
       {/* List action button */}
-      <td className={`px-2.5 py-1.5 align-middle text-center transition-[padding] duration-200 ease-out`}>
+      <td className={`${centerCellClass} transition-[padding] duration-200 ease-out`}>
         <button
           type="button"
           onClick={() => onToggleListMembership(group.chatId)}
           title={listActionTitle}
-          className={`inline-flex ${actionButtonTextClass} items-center rounded-full border font-medium transition-colors ${
+          className={`inline-flex ${actionButtonTextClass} items-center rounded-full border font-semibold transition-all ${
             !whitelistMode && listPolicy.listed
-              ? 'border-warning/40 bg-warning/8 text-warning hover:bg-warning/15'
+              ? 'border-warning/45 bg-warning/12 text-warning shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] hover:border-warning/55 hover:bg-warning/18'
               : listPolicy.listed
-                ? 'border-primary/35 bg-primary/8 text-primary hover:bg-primary/15'
-                : 'border-border/65 bg-background/45 text-foreground/75 hover:border-primary/35 hover:bg-primary/[0.08] hover:text-foreground'
+                ? 'border-primary/40 bg-primary/10 text-primary shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] hover:border-primary/55 hover:bg-primary/16'
+                : 'border-border/60 bg-background/65 text-foreground/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] hover:-translate-y-[0.5px] hover:border-warning/45 hover:bg-warning/12 hover:text-warning'
           }`}
         >
           {listPolicy.listed ? (
-            <Minus className="h-2.5 w-2.5" />
+            <Minus className="h-3 w-3 shrink-0 -translate-y-px" />
           ) : (
-            <Plus className="h-2.5 w-2.5" />
+            <Plus className="h-3 w-3 shrink-0 -translate-y-px" />
           )}
-          {whitelistMode
-            ? listPolicy.listed
-              ? 'Gỡ'
-              : 'Cho phép'
-            : listPolicy.listed
-              ? 'Bỏ chặn'
-              : 'Chặn'}
+          <span className="leading-none">
+            {whitelistMode
+              ? listPolicy.listed
+                ? 'Gỡ'
+                : 'Cho phép'
+              : listPolicy.listed
+                ? 'Bỏ chặn'
+                : 'Chặn'}
+          </span>
         </button>
       </td>
 

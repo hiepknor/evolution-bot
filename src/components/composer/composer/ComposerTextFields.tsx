@@ -1,5 +1,5 @@
 import type { Dispatch, RefObject, SetStateAction } from 'react';
-import { ChevronDown, FileText, HardDrive } from 'lucide-react';
+import { ChevronDown, FileText, HardDrive, Layers } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -127,30 +127,37 @@ export function ComposerTextFields({
 
       {/* Advanced content toggle */}
       <div className={panelTokens.section}>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            className={cn(
-              panelTokens.control,
-              'flex min-w-0 flex-1 items-center justify-between gap-2 border border-border/45 bg-muted/20 px-3 text-left transition-colors hover:bg-muted/30'
-            )}
-            onClick={() => draft.setShowAdvancedContent((prev: boolean) => !prev)}
-          >
-            <span className="text-sm font-medium text-muted-foreground">Nội dung nâng cao</span>
-            <ChevronDown
-              className={cn(
-                'h-4 w-4 shrink-0 transition-transform duration-200',
-                draft.showAdvancedContent ? 'rotate-180 text-foreground/70' : 'text-muted-foreground/50'
-              )}
-            />
-          </button>
+        <button
+          type="button"
+          className={cn(
+            panelTokens.control,
+            'flex w-full items-center gap-2.5 border border-border/40 bg-background/35 px-3 text-left transition-colors hover:bg-muted/20'
+          )}
+          onClick={() => draft.setShowAdvancedContent((prev: boolean) => !prev)}
+        >
+          <div className={cn(
+            'flex h-6 w-6 shrink-0 items-center justify-center rounded transition-colors',
+            draft.showAdvancedContent ? 'bg-primary/10 text-primary' : 'bg-muted/40 text-muted-foreground'
+          )}>
+            <Layers className="h-3 w-3" />
+          </div>
+          <span className={cn(
+            'flex-1 text-sm font-medium transition-colors',
+            draft.showAdvancedContent ? 'text-foreground' : 'text-muted-foreground'
+          )}>
+            Nội dung nâng cao
+          </span>
           <Badge
             variant={draft.hasAdvancedContent ? 'success' : 'secondary'}
-            className="shrink-0 tabular-nums"
+            className="shrink-0 text-[10px]"
           >
             {draft.hasAdvancedContent ? 'Đang dùng' : 'Chưa dùng'}
           </Badge>
-        </div>
+          <ChevronDown className={cn(
+            'h-3.5 w-3.5 shrink-0 transition-transform duration-200',
+            draft.showAdvancedContent ? 'rotate-180 text-foreground/70' : 'text-muted-foreground/40'
+          )} />
+        </button>
 
         {draft.showAdvancedContent ? (
           <div className="space-y-2.5 pt-1">

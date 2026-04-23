@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { FileText } from 'lucide-react';
 import { ActivityLogPanel } from '@/components/logs/activity-log-panel';
-import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils/cn';
 import type { ScreenFlag } from '@/hooks/use-screen-flag';
 
@@ -63,30 +62,32 @@ export function ActivityLogFloatingModal({ screenFlag }: ActivityLogFloatingModa
   return (
     <>
       {!open ? (
-        <Button
+        <button
           type="button"
-          variant="secondary"
-          className={cn(
-            'fixed z-40 border border-border/55 bg-card text-xs text-foreground shadow-[0_16px_34px_-28px_rgba(0,0,0,0.82)]',
-            isSmallScreen
-              ? 'bottom-24 right-4 h-10 rounded-full px-4'
-              : 'right-0 top-1/2 h-14 w-10 -translate-y-1/2 rounded-l-xl rounded-r-none border-r-0 px-0'
-          )}
           onClick={() => setOpen(true)}
-          title="Mở nhật ký hoạt động"
-        >
-          {isSmallScreen ? (
-            <>
-              <FileText className="mr-2 h-4 w-4" />
-              Nhật ký hoạt động
-            </>
-          ) : (
-            <>
-              <FileText className="h-4 w-4" />
-              <span className="sr-only">Nhật ký hoạt động</span>
-            </>
+          title="Nhật ký hoạt động"
+          aria-label="Mở nhật ký hoạt động"
+          className={cn(
+            'group fixed z-40 flex items-center justify-center transition-all duration-150',
+            isSmallScreen
+              ? [
+                  'bottom-24 right-4 h-10 w-10 rounded-xl',
+                  'border border-border/50 bg-card/90 backdrop-blur-sm',
+                  'text-muted-foreground shadow-[0_8px_24px_-10px_rgba(0,0,0,0.55)]',
+                  'hover:border-primary/40 hover:bg-primary/10 hover:text-primary'
+                ].join(' ')
+              : [
+                  'right-0 top-1/2 h-11 w-8 -translate-y-1/2',
+                  'rounded-l-xl rounded-r-none border border-r-0 border-border/35',
+                  'bg-card/80 backdrop-blur-sm',
+                  'text-muted-foreground/55',
+                  'shadow-[-3px_0_12px_-4px_rgba(0,0,0,0.4)]',
+                  'hover:border-primary/30 hover:bg-card/95 hover:text-primary/80 hover:w-9'
+                ].join(' ')
           )}
-        </Button>
+        >
+          <FileText className="h-3.5 w-3.5 transition-transform duration-150 group-hover:scale-110" />
+        </button>
       ) : null}
 
       {shouldRender ? (

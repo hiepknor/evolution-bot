@@ -1,12 +1,12 @@
 import type { RefObject } from 'react';
-import { Search, SlidersHorizontal, X } from 'lucide-react';
+import { ChevronDown, Search, SlidersHorizontal, X } from 'lucide-react';
 
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { panelTokens } from '@/components/layout/panel-tokens';
 import { cn } from '@/lib/utils/cn';
 import type { GroupFilterCounts, GroupPermissionFilterMode, GroupStatusFilterMode } from '@/lib/groups/group-filtering';
 import { GroupsFilterChips } from '@/components/groups/panel/groups-filter-chips';
+
 interface GroupsFilterBarProps {
   searchInputRef: RefObject<HTMLInputElement>;
   searchInputValue: string;
@@ -34,6 +34,7 @@ interface GroupsFilterBarProps {
   clearAllFilters: () => void;
   filterCounts: GroupFilterCounts;
 }
+
 export function GroupsFilterBar(props: GroupsFilterBarProps): JSX.Element {
   const {
     searchInputRef,
@@ -61,11 +62,15 @@ export function GroupsFilterBar(props: GroupsFilterBarProps): JSX.Element {
     clearAllFilters,
     filterCounts
   } = props;
+
+  const hasAdvanced = showAdvancedFilters || hasMinMembersFilter;
+
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative min-w-[240px] flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        {/* Search */}
+        <div className="relative min-w-[200px] flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground/60" />
           <Input
             ref={searchInputRef}
             value={searchInputValue}
@@ -78,21 +83,22 @@ export function GroupsFilterBar(props: GroupsFilterBarProps): JSX.Element {
               setSearchTerm(nextValue);
             }}
             placeholder="Tìm theo tên nhóm hoặc chat id"
-            className={`${panelTokens.control} border-border/60 bg-background/60 pl-9 pr-9 placeholder:text-foreground/55`}
+            className={`${panelTokens.control} border-border/50 bg-background/55 pl-9 pr-9 placeholder:text-foreground/40`}
           />
           {searchInputValue.trim().length > 0 ? (
             <button
               type="button"
               onClick={clearSearchInput}
               className="absolute right-2 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              title="Xóa từ khóa tìm kiếm"
+              title="Xóa từ khóa"
               aria-label="Xóa từ khóa tìm kiếm"
             >
               <X className="h-3.5 w-3.5" />
             </button>
           ) : null}
         </div>
-        {/* Status filter — segmented control */}
+
+        {/* Status segmented control */}
         <div className={cn(panelTokens.toolbar, 'inline-flex shrink-0 p-1')}>
           {(
             [
@@ -126,55 +132,79 @@ export function GroupsFilterBar(props: GroupsFilterBarProps): JSX.Element {
           })}
         </div>
 
-        {/* Permission select */}
-        <select
-          value={permissionFilterMode}
-          onChange={(event) => setPermissionFilterMode(event.target.value as GroupPermissionFilterMode)}
-          className={`${panelTokens.control} h-10 w-[156px] shrink-0 rounded-lg border border-border/50 bg-background/60 px-3 text-sm text-foreground`}
-          aria-label="Lọc quyền gửi"
-        >
-          <option value="all">Mọi quyền</option>
-          <option value="allowed">Gửi được</option>
-          <option value="unknown">Cần kiểm tra</option>
-          <option value="blocked">Không gửi được</option>
-        </select>
+        {/* Permission filter — styled select */}
+        <div className="relative shrink-0">
+          <select
+            value={permissionFilterMode}
+            onChange={(event) => setPermissionFilterMode(event.target.value as GroupPermissionFilterMode)}
+            className={cn(
+              panelTokens.control,
+              'h-10 w-[152px] appearance-none rounded-lg border border-border/50 bg-background/55',
+              'pl-3 pr-8 text-sm text-foreground',
+              permissionFilterMode !== 'all' ? 'border-success/30 bg-success/[0.06] text-success' : ''
+            )}
+            aria-label="Lọc quyền gửi"
+          >
+            <option value="all">Mọi quyền</option>
+            <option value="allowed">Gửi được</option>
+            <option value="unknown">Cần kiểm tra</option>
+            <option value="blocked">Không gửi được</option>
+          </select>
+          <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground/60" />
+        </div>
 
-        <Button
-          size="sm"
-          variant={showAdvancedFilters || hasMinMembersFilter ? 'secondary' : 'outline'}
+        {/* Advanced toggle */}
+        <button
+          type="button"
           onClick={() => setShowAdvancedFilters((prev) => !prev)}
-          className={`${panelTokens.control} shrink-0 gap-1.5 px-3`}
+          className={cn(
+            panelTokens.control,
+            'inline-flex h-10 shrink-0 items-center gap-1.5 rounded-lg border px-3 text-sm font-medium transition-colors',
+            hasAdvanced
+              ? 'border-primary/30 bg-primary/[0.07] text-primary hover:bg-primary/10'
+              : 'border-border/50 bg-background/55 text-muted-foreground hover:border-border/70 hover:text-foreground'
+          )}
+          title={showAdvancedFilters ? 'Ẩn bộ lọc nâng cao' : 'Hiện bộ lọc nâng cao'}
         >
           <SlidersHorizontal className="h-3.5 w-3.5" />
           Nâng cao
-        </Button>
-      </div>
-      {showAdvancedFilters ? (
-        <div className="flex flex-wrap items-end gap-2 rounded-lg border border-border/30 bg-muted/[0.08] p-2">
-          <div className="space-y-1">
-            <p className="text-xs font-medium text-muted-foreground">Tối thiểu thành viên</p>
-            <Input
-              type="number"
-              min={0}
-              step={1}
-              value={minMembersInput}
-              onChange={(event) => setMinMembersInput(event.target.value)}
-              placeholder="Nhập số"
-              className={`${panelTokens.control} w-[180px] border-border/60 bg-background/60`}
-            />
-          </div>
           {hasMinMembersFilter ? (
-            <Button
-              size="sm"
-              variant="outline"
-              className={`${panelTokens.control} px-3`}
-              onClick={() => setMinMembersInput('')}
-            >
-              Xóa mức tối thiểu
-            </Button>
+            <span className="h-1.5 w-1.5 rounded-full bg-primary" />
           ) : null}
+        </button>
+      </div>
+
+      {/* Advanced panel */}
+      {showAdvancedFilters ? (
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border/30 bg-muted/[0.06] px-3 py-2.5">
+          <div className="space-y-1">
+            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Tối thiểu thành viên</p>
+            <div className="flex items-center gap-2">
+              <Input
+                type="number"
+                min={0}
+                step={1}
+                value={minMembersInput}
+                onChange={(event) => setMinMembersInput(event.target.value)}
+                placeholder="Nhập số"
+                className={`${panelTokens.control} w-[140px] border-border/40 bg-background/60 tabular-nums`}
+              />
+              {hasMinMembersFilter ? (
+                <button
+                  type="button"
+                  onClick={() => setMinMembersInput('')}
+                  className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground"
+                  title="Xóa bộ lọc"
+                  aria-label="Xóa bộ lọc thành viên tối thiểu"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              ) : null}
+            </div>
+          </div>
         </div>
       ) : null}
+
       <GroupsFilterChips
         hasAnyFilter={hasAnyFilter}
         hasSearchFilter={hasSearchFilter}

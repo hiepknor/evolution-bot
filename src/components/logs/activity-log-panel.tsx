@@ -65,17 +65,17 @@ const levelIcon: Record<string, JSX.Element> = {
 };
 
 const levelItemTone: Record<string, string> = {
-  info: 'border-border/32 bg-background/22',
-  success: 'border-success/24 bg-success/[0.045]',
-  warn: 'border-warning/24 bg-warning/[0.05]',
-  error: 'border-destructive/24 bg-destructive/[0.05]'
+  info: 'border-border/45 bg-background/70',
+  success: 'border-border/45 bg-background/70',
+  warn: 'border-border/45 bg-background/70',
+  error: 'border-border/45 bg-background/70'
 };
 
 const levelBorderTone: Record<string, string> = {
-  info: 'border-l-border/60',
-  success: 'border-l-success/50',
-  warn: 'border-l-warning/55',
-  error: 'border-l-destructive/55'
+  info: 'border-l-primary/30',
+  success: 'border-l-success/55',
+  warn: 'border-l-warning/60',
+  error: 'border-l-destructive/60'
 };
 
 interface ActivityLogPanelProps {
@@ -403,46 +403,50 @@ export function ActivityLogPanel({ onRequestClose, className, compact = false }:
   const renderLogItem = (log: CampaignLog | UiActivityLog): JSX.Element => (
     <article
       className={cn(
-        'rounded-lg border border-l-2 px-2.5 py-2 text-[13px] transition-colors',
+        'rounded-md border border-l-2 px-3 py-2 text-[13px] transition-colors',
         levelItemTone[log.level] ?? levelItemTone.info,
         levelBorderTone[log.level] ?? levelBorderTone.info
       )}
     >
-      <div className="mb-1 flex items-center justify-between gap-2">
+      <div className="mb-1.5 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <span className="text-muted-foreground">{levelIcon[log.level] ?? levelIcon.info}</span>
+          <span className="text-muted-foreground/80">{levelIcon[log.level] ?? levelIcon.info}</span>
           {filter === 'all' ? (
-            <Badge variant={levelVariant[log.level] ?? 'secondary'}>
+            <Badge variant={levelVariant[log.level] ?? 'secondary'} className="h-5 rounded-full px-2 text-[10px] font-semibold">
               {levelLabel[log.level] ?? log.level}
             </Badge>
           ) : null}
           {'count' in log && typeof log.count === 'number' && log.count > 1 ? (
-            <Badge variant="outline">x{log.count}</Badge>
+            <Badge variant="outline" className="h-5 rounded-full px-1.5 text-[10px]">
+              x{log.count}
+            </Badge>
           ) : null}
         </div>
-        <span className="text-xs tabular-nums text-muted-foreground">{dayjs(log.createdAt).format('HH:mm:ss')}</span>
+        <span className="text-[11px] tabular-nums text-muted-foreground/90">{dayjs(log.createdAt).format('HH:mm:ss')}</span>
       </div>
-      <p className={cn('leading-[1.3rem] text-foreground/95', compact && 'truncate')}>
+      <p className={cn('leading-[1.35rem] text-foreground/92', compact && 'truncate')}>
         {localizeLogMessage(log.message)}
       </p>
     </article>
   );
 
   return (
-    <Card className={cn('flex h-full min-h-0 flex-col overflow-hidden border-border/60 bg-card', className)}>
-      <CardHeader className={cn('border-b border-border/50 px-3 py-2.5', panelTokens.cardHeader)}>
+    <Card className={cn('flex h-full min-h-0 flex-col overflow-hidden border-border/70 bg-card/70', className)}>
+      <CardHeader className="border-b border-border/70 px-4 py-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2.5">
-              <div className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-primary/10 text-primary">
+              <div className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
                 <FileText className="h-3.5 w-3.5" />
               </div>
-              <CardTitle>Nhật ký hoạt động</CardTitle>
+              <CardTitle className="text-sm font-semibold leading-none text-foreground">Nhật ký hoạt động</CardTitle>
             </div>
             <div className="mt-1 flex items-center gap-2">
-              <span className="text-xs text-foreground/65">Tổng {mergedLogs.length} mục</span>
+              <span className="text-[10px] tabular-nums text-muted-foreground">
+                {mergedLogs.length} mục
+              </span>
               <span className="text-border/60">·</span>
-              <span className="text-xs text-foreground/65">
+              <span className="text-[10px] tabular-nums text-muted-foreground">
                 Hiển thị {displayedLogs.length}
                 {hiddenLogCount > 0 ? ` / ${filteredLogs.length}` : ''}
               </span>
@@ -673,7 +677,7 @@ export function ActivityLogPanel({ onRequestClose, className, compact = false }:
                 })}
               </div>
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 {displayedLogs.map((log) => (
                   <div key={log.id}>{renderLogItem(log)}</div>
                 ))}
