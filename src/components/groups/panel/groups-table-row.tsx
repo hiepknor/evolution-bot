@@ -97,19 +97,19 @@ export function GroupsTableRow({
       ref={rowRef}
       aria-selected={selected}
       className={[
-        'border-t border-border/60 transition-[background-color,opacity,padding,font-size,line-height] duration-200 ease-out',
+        'group border-t border-border/60 transition-[background-color,box-shadow,opacity,padding,font-size,line-height] duration-200 ease-out',
         isRunningRow
           ? 'bg-amber-500/[0.055] ring-1 ring-inset ring-amber-400/22'
           : selected
             ? 'bg-emerald-500/[0.045] ring-1 ring-inset ring-emerald-400/20'
-            : 'odd:bg-card even:bg-card/97 hover:bg-muted/14',
+            : 'odd:bg-card even:bg-card/97 hover:bg-primary/[0.095] hover:shadow-[inset_0_0_0_1px_rgba(34,211,238,0.24),inset_0_1px_0_rgba(255,255,255,0.04)]',
         isSelectionBlocked ? 'opacity-70' : ''
       ]
         .filter(Boolean)
         .join(' ')}
     >
       {/* Checkbox */}
-      <td className={`bg-inherit ${cellClass} transition-[padding] duration-200 ease-out`}>
+      <td className={`${cellClass} transition-[padding] duration-200 ease-out`}>
         <Checkbox
           className={selectedCheckboxClass}
           checked={selected}
@@ -119,19 +119,19 @@ export function GroupsTableRow({
 
       {/* Group name */}
       <td className={`truncate ${cellClass} transition-[padding] duration-200 ease-out`} title={displayName}>
-        <span className={`${rowTextClass} ${hasDistinctName ? 'text-foreground' : 'text-muted-foreground'} transition-[font-size,line-height] duration-200 ease-out`}>
+        <span className={`${rowTextClass} ${hasDistinctName ? 'text-foreground' : 'text-muted-foreground'} transition-[font-size,line-height,color] duration-200 ease-out group-hover:text-foreground`}>
           {displayName}
         </span>
       </td>
 
       {/* Members count */}
-      <td className={`whitespace-nowrap ${cellClass} ${rowTextClass} text-right tabular-nums text-foreground/90 transition-[padding,font-size,line-height] duration-200 ease-out`}>
+      <td className={`whitespace-nowrap ${cellClass} ${rowTextClass} text-right tabular-nums text-foreground/90 transition-[padding,font-size,line-height,color] duration-200 ease-out group-hover:text-foreground`}>
         {group.membersCount}
       </td>
 
       {/* Chat ID */}
       <td className={`${cellClass} transition-[padding] duration-200 ease-out`}>
-        <span className={`block min-w-0 truncate font-mono ${monoTextClass} text-foreground/88 transition-[font-size,line-height] duration-200 ease-out`} title={group.chatId}>
+        <span className={`block min-w-0 truncate font-mono ${monoTextClass} text-foreground/88 transition-[font-size,line-height,color] duration-200 ease-out group-hover:text-foreground`} title={group.chatId}>
           {formatChatId(group.chatId)}
         </span>
       </td>
