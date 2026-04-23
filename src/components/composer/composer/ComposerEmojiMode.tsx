@@ -1,4 +1,5 @@
-import { Label } from '@/components/ui/label';
+import { Smile } from 'lucide-react';
+
 import {
   Select,
   SelectContent,
@@ -23,15 +24,15 @@ interface ComposerEmojiModeProps {
 
 export function ComposerEmojiMode({ emojiMode, setEmojiMode }: ComposerEmojiModeProps): JSX.Element {
   return (
-    <div className="space-y-1">
-      <Label className={panelTokens.fieldLabel}>Mức độ emoji</Label>
-      <Select
-        value={emojiMode}
-        onValueChange={(value) => {
-          setEmojiMode(value as EmojiMode);
-        }}
-      >
-        <SelectTrigger className={panelTokens.control}>
+    <div className="space-y-1.5">
+      <div className="flex items-center gap-2">
+        <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-muted/40 text-muted-foreground">
+          <Smile className="h-3 w-3" />
+        </div>
+        <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Mức độ emoji</p>
+      </div>
+      <Select value={emojiMode} onValueChange={(value) => setEmojiMode(value as EmojiMode)}>
+        <SelectTrigger className={`${panelTokens.control} border-border/40 bg-background/60`}>
           <SelectValue placeholder="Chọn mức emoji" />
         </SelectTrigger>
         <SelectContent>
@@ -42,8 +43,8 @@ export function ComposerEmojiMode({ emojiMode, setEmojiMode }: ComposerEmojiMode
           ))}
         </SelectContent>
       </Select>
-      <p className="text-xs text-muted-foreground">
-        Mức emoji sẽ được lưu theo bản nháp và áp dụng khi chạy chiến dịch.
+      <p className="text-[10px] text-muted-foreground/70">
+        Lưu theo bản nháp và áp dụng khi chạy chiến dịch.
       </p>
     </div>
   );

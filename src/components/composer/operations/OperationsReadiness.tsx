@@ -1,3 +1,5 @@
+import { CheckCircle2 } from 'lucide-react';
+
 import { Badge } from '@/components/ui/badge';
 
 interface OperationsReadinessProps {
@@ -21,27 +23,44 @@ export function OperationsReadiness({
   executionBadgeHint,
   executionDisabledReason
 }: OperationsReadinessProps): JSX.Element {
+  const allReady = canSend || running;
+
   return (
-    <div className="space-y-2">
-      <p className="text-sm font-semibold text-foreground">Trạng thái sẵn sàng</p>
-      <div className="flex flex-wrap items-center gap-2">
+    <div className="space-y-2.5">
+      <div className="flex items-center gap-2.5">
+        <div
+          className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${
+            allReady ? 'bg-success/10 text-success' : 'bg-muted/40 text-muted-foreground'
+          }`}
+        >
+          <CheckCircle2 className="h-3.5 w-3.5" />
+        </div>
+        <p className="text-sm font-semibold text-foreground">Trạng thái sẵn sàng</p>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-1.5">
         {readiness.map((item) => (
           <Badge
             key={item.label}
             variant={item.variant}
-            className={item.variant === 'outline' ? 'border-border/55 bg-background/40 text-muted-foreground' : ''}
+            className={
+              item.variant === 'outline'
+                ? 'border-border/40 bg-background/40 text-muted-foreground'
+                : ''
+            }
           >
             {item.label} {item.state}
           </Badge>
         ))}
       </div>
+
       {!canSend && !running ? (
-        <p className="text-sm text-muted-foreground">
-          Thiếu điều kiện gửi:{' '}
+        <p className="text-xs text-muted-foreground">
+          Thiếu điều kiện:{' '}
           {missingReadinessReasons.join(', ') ||
             executionBadgeHint ||
             executionDisabledReason?.replace(/\.$/, '') ||
-            'vui lòng kiểm tra lại điều kiện gửi'}
+            'vui lòng kiểm tra lại'}
           .
         </p>
       ) : null}

@@ -23,43 +23,56 @@ export function GroupsSelectionToolbar({
   onDeselectAllVisible,
   onInvertSelectionVisible
 }: GroupsSelectionToolbarProps): JSX.Element {
+  const disabled = selectableVisibleCount === 0;
+
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border/30 bg-muted/[0.08] p-2">
-      <div className="text-sm text-foreground/85">Chọn nhanh (trong bộ lọc hiện tại): {selectedVisibleCount} đã chọn</div>
-      {blockedVisibleCount > 0 ? (
-        <Badge
-          variant="warning"
-          className="h-6 rounded-full px-2 text-xs"
-          title={blockedSelectionDetail}
-        >
-          {blockedSelectionLabel}
-        </Badge>
-      ) : null}
-      <div className="flex flex-wrap items-center gap-2">
+    <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/30 pt-2">
+      <div className="flex items-center gap-2">
+        {selectedVisibleCount > 0 ? (
+          <span className="inline-flex h-6 items-center gap-1 rounded-full border border-emerald-400/30 bg-emerald-500/[0.08] px-2.5 text-[11px] font-semibold tabular-nums text-emerald-400">
+            {selectedVisibleCount} đã chọn
+          </span>
+        ) : (
+          <span className="text-[11px] text-muted-foreground">Chưa chọn nhóm nào</span>
+        )}
+        {blockedVisibleCount > 0 ? (
+          <Badge
+            variant="warning"
+            className="h-5 rounded-full px-2 text-[10px]"
+            title={blockedSelectionDetail}
+          >
+            {blockedSelectionLabel}
+          </Badge>
+        ) : null}
+      </div>
+
+      <div className="flex items-center gap-0.5">
         <Button
           size="sm"
-          variant="outline"
-          className={`${panelTokens.control} rounded-full border-border/55 bg-background/35 px-3 text-foreground/90 hover:bg-muted/35`}
+          variant="ghost"
+          className={`${panelTokens.control} h-7 rounded-md px-2.5 text-xs text-muted-foreground hover:text-foreground`}
           onClick={onSelectAllVisible}
-          disabled={selectableVisibleCount === 0}
+          disabled={disabled}
         >
           Chọn tất cả
         </Button>
+        <span className="select-none text-border/60">·</span>
         <Button
           size="sm"
-          variant="outline"
-          className={`${panelTokens.control} rounded-full border-border/55 bg-background/35 px-3 text-foreground/90 hover:bg-muted/35`}
+          variant="ghost"
+          className={`${panelTokens.control} h-7 rounded-md px-2.5 text-xs text-muted-foreground hover:text-foreground`}
           onClick={onDeselectAllVisible}
-          disabled={selectableVisibleCount === 0}
+          disabled={disabled}
         >
           Bỏ chọn
         </Button>
+        <span className="select-none text-border/60">·</span>
         <Button
           size="sm"
-          variant="outline"
-          className={`${panelTokens.control} rounded-full border-border/55 bg-background/35 px-3 text-foreground/90 hover:bg-muted/35`}
+          variant="ghost"
+          className={`${panelTokens.control} h-7 rounded-md px-2.5 text-xs text-muted-foreground hover:text-foreground`}
           onClick={onInvertSelectionVisible}
-          disabled={selectableVisibleCount === 0}
+          disabled={disabled}
         >
           Đảo chọn
         </Button>

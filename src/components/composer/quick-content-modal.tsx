@@ -29,9 +29,9 @@ export function QuickContentModal({ open, onOpenChange, onApply }: QuickContentM
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent className="flex h-[86vh] max-h-[86vh] max-w-6xl flex-col overflow-hidden border-border/50 bg-[#182026] p-0">
-        <AlertDialogHeader className="border-b border-border/50 px-5 pb-3 pt-3.5">
-          <div className="space-y-2 pr-12">
+      <AlertDialogContent className="flex h-[86vh] max-h-[86vh] max-w-6xl flex-col overflow-hidden border-border/50 bg-card p-0">
+        <AlertDialogHeader className="border-b border-border/50 bg-card/95 px-5 pb-3 pt-3.5 backdrop-blur-sm">
+          <div className="space-y-1 pr-12">
             <AlertDialogTitle className={panelTokens.modalTitle}>Chọn dòng mẫu để chèn vào nội dung</AlertDialogTitle>
             <AlertDialogDescription className={panelTokens.bodyText}>
               Tìm trong thư viện dòng mẫu, chọn nội dung cần dùng và chèn trực tiếp vào phần mẫu nội dung đang soạn.
@@ -40,7 +40,7 @@ export function QuickContentModal({ open, onOpenChange, onApply }: QuickContentM
           <button
             type="button"
             onClick={() => onOpenChange(false)}
-            className="absolute right-4 top-3.5 inline-flex h-9 w-9 items-center justify-center rounded-full border border-border/45 bg-background/55 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            className="absolute right-4 top-3.5 inline-flex h-8 w-8 items-center justify-center rounded-full border border-border/40 bg-background/55 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             aria-label="Đóng modal"
             title="Đóng"
           >

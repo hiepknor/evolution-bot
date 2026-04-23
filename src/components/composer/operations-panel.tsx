@@ -1,4 +1,4 @@
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Zap } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -76,11 +76,16 @@ export function OperationsPanel(): JSX.Element {
   });
 
   return (
-    <Card>
-      <CardHeader className={panelTokens.cardHeader}>
-        <CardTitle>Vận hành</CardTitle>
+    <Card className="border-border/70 bg-card/70">
+      <CardHeader className="border-b border-border/70 px-4 py-3">
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+            <Zap className="h-3.5 w-3.5" />
+          </div>
+          <CardTitle className="text-sm font-semibold leading-none text-foreground">Vận hành</CardTitle>
+        </div>
       </CardHeader>
-      <CardContent className={panelTokens.cardContent}>
+      <CardContent className="p-4 pt-3 space-y-3">
         {campaignStore.duplicateWarning ? (
           <div className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
             {campaignStore.duplicateWarning}

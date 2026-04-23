@@ -410,7 +410,6 @@ const runningEtaLabel = paused
                     type="button"
                     role="tab"
                     aria-selected={filter === key}
-                    aria-pressed={filter === key}
                     className={`inline-flex ${panelTokens.control} min-w-[112px] shrink-0 items-center justify-center whitespace-nowrap px-3 py-0 font-medium leading-none tabular-nums transition-colors ${
                       filter === key
                         ? 'bg-primary text-primary-foreground'

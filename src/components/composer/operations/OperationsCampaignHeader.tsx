@@ -1,7 +1,7 @@
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, Tag } from 'lucide-react';
+
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { panelTokens } from '@/components/layout/panel-tokens';
 
 interface OperationsCampaignHeaderProps {
@@ -19,22 +19,30 @@ export function OperationsCampaignHeader({
 }: OperationsCampaignHeaderProps): JSX.Element {
   return (
     <div className={panelTokens.section}>
-      <p className={panelTokens.sectionTitle}>Chiến dịch</p>
-      <Label className={panelTokens.fieldLabel}>Tên chiến dịch</Label>
+      <div className="flex items-center gap-2.5">
+        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-accent/40 text-accent-foreground">
+          <Tag className="h-3.5 w-3.5" />
+        </div>
+        <div>
+          <p className={panelTokens.sectionTitle}>Chiến dịch</p>
+          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Tên chiến dịch</p>
+        </div>
+      </div>
       <div className="flex gap-2">
         <Input
           value={campaignName}
           onChange={(event) => onCampaignNameChange(event.target.value)}
           disabled={controlsDisabled}
-          className={panelTokens.control}
+          className={`${panelTokens.control} font-mono text-sm`}
         />
         <Button
           type="button"
           variant="outline"
           onClick={onResetCampaignName}
           disabled={controlsDisabled}
-          className={panelTokens.control}
+          className={`${panelTokens.control} shrink-0`}
           aria-label="Tạo tên chiến dịch mới"
+          title="Tạo tên mới"
         >
           <RefreshCw className="h-3.5 w-3.5" />
         </Button>

@@ -1,5 +1,5 @@
-import { RefreshCw, Users } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
+import { AlertTriangle, RefreshCw, Shield, Tag, Users } from 'lucide-react';
+
 import { Button } from '@/components/ui/button';
 import { panelTokens } from '@/components/layout/panel-tokens';
 
@@ -33,7 +33,6 @@ export function GroupsSyncBar({
   activeCampaignLabel,
   activeCampaignTitle,
   isConnectionBlocked,
-  canTriggerConnectionCta,
   syncButtonDisabled,
   syncButtonTitle,
   syncButtonLabel,
@@ -44,51 +43,61 @@ export function GroupsSyncBar({
   onClearCache,
   syncDisabledReason
 }: GroupsSyncBarProps): JSX.Element {
+  const isWhitelist = listModeLabel === 'Danh sách cho phép';
+
   return (
-    <div className={panelTokens.section}>
+    <div className="space-y-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap items-center justify-start gap-1.5">
-          <Badge variant="outline" className="h-6 gap-1 rounded-full px-2">
-            <Users className="h-3 w-3" />
-            Hiển thị: {visibleSummary}
-          </Badge>
-          <Badge
-            variant={listModeLabel === 'Danh sách cho phép' ? 'warning' : 'secondary'}
-            className="h-6 max-w-[260px] items-center justify-start rounded-full px-2 text-xs"
+        {/* Info chips */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="inline-flex h-7 items-center gap-1.5 rounded-full border border-border/40 bg-background/40 px-2.5 text-xs text-muted-foreground">
+            <Users className="h-3 w-3 shrink-0" />
+            {visibleSummary}
+          </span>
+          <span
+            className={`inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-xs ${
+              isWhitelist
+                ? 'border-warning/35 bg-warning/8 text-warning'
+                : 'border-border/40 bg-background/40 text-muted-foreground'
+            }`}
             title={`Chính sách gửi: ${listModeLabel.toLowerCase()} (${blacklistLength} chat id)`}
           >
-            <span className="truncate">Chính sách: {listModeShortLabel} ({blacklistLength})</span>
-          </Badge>
+            <Shield className="h-3 w-3 shrink-0" />
+            {listModeShortLabel} ({blacklistLength})
+          </span>
           {groupsIgnoreFlag === true ? (
-            <Badge
-              variant="destructive"
-              className="h-6 max-w-[260px] items-center justify-start rounded-full px-2 text-xs"
+            <span
+              className="inline-flex h-7 items-center gap-1.5 rounded-full border border-destructive/40 bg-destructive/8 px-2.5 text-xs text-destructive"
               title="groups_ignore=true: Evolution API đang bỏ qua group messages"
             >
-              <span className="truncate">groups_ignore: Bật</span>
-            </Badge>
+              <AlertTriangle className="h-3 w-3 shrink-0" />
+              groups_ignore: Bật
+            </span>
           ) : null}
-          <Badge
-            variant="outline"
-            className="h-6 max-w-[300px] items-center justify-start rounded-full px-2 text-xs"
+          <span
+            className="inline-flex h-7 max-w-[260px] items-center gap-1.5 rounded-full border border-border/40 bg-background/40 px-2.5 text-xs text-muted-foreground"
             title={activeCampaignTitle}
           >
-            <span className="truncate">Theo chiến dịch: {activeCampaignLabel}</span>
-          </Badge>
+            <Tag className="h-3 w-3 shrink-0" />
+            <span className="truncate">{activeCampaignLabel}</span>
+          </span>
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-2">
+
+        {/* Action buttons */}
+        <div className="flex items-center gap-2">
           <Button
             variant={isConnectionBlocked ? 'outline' : 'default'}
             onClick={onSyncPrimaryAction}
-            className={`${panelTokens.control} w-auto min-w-[220px] rounded-md px-4 ${
+            className={`${panelTokens.control} gap-2 px-4 ${
               isConnectionBlocked
                 ? 'border-warning/45 bg-warning/10 text-warning hover:bg-warning/15'
-                : 'bg-primary/95 text-primary-foreground shadow-[0_8px_24px_-14px_hsl(var(--primary))] hover:bg-primary'
+                : 'shadow-[0_8px_24px_-14px_hsl(var(--primary))]'
             }`}
             disabled={syncButtonDisabled}
             title={syncButtonTitle}
+            aria-label={syncButtonLabel}
           >
-            <RefreshCw className={`mr-2 h-4 w-4 ${isSyncLoading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`h-3.5 w-3.5 ${isSyncLoading ? 'animate-spin' : ''}`} />
             {syncButtonLabel}
           </Button>
           {hasGroups ? (
@@ -96,17 +105,18 @@ export function GroupsSyncBar({
               variant="outline"
               onClick={onClearCache}
               disabled={isSyncLoading || clearCachePending}
-              className={`${panelTokens.control} rounded-md px-3`}
+              className={`${panelTokens.control} px-3`}
             >
-              {clearCachePending ? 'Đang xóa cache...' : 'Xóa cache'}
+              {clearCachePending ? 'Đang xóa...' : 'Xóa cache'}
             </Button>
           ) : null}
         </div>
       </div>
+
       {syncDisabledReason ? (
-        <div className="mt-2 rounded-md border border-warning/35 bg-warning/10 px-3 py-2 text-sm text-warning">
-          <span>{syncDisabledReason}</span>
-          {isConnectionBlocked && canTriggerConnectionCta ? null : null}
+        <div className="flex items-start gap-2 rounded-lg border border-warning/35 bg-warning/[0.07] px-3 py-2 text-xs text-warning">
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          {syncDisabledReason}
         </div>
       ) : null}
     </div>

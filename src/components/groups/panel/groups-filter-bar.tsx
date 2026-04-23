@@ -1,9 +1,10 @@
 import type { RefObject } from 'react';
 import { Search, SlidersHorizontal, X } from 'lucide-react';
+
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { panelTokens } from '@/components/layout/panel-tokens';
+import { cn } from '@/lib/utils/cn';
 import type { GroupFilterCounts, GroupPermissionFilterMode, GroupStatusFilterMode } from '@/lib/groups/group-filtering';
 import { GroupsFilterChips } from '@/components/groups/panel/groups-filter-chips';
 interface GroupsFilterBarProps {
@@ -91,64 +92,61 @@ export function GroupsFilterBar(props: GroupsFilterBarProps): JSX.Element {
             </button>
           ) : null}
         </div>
-        <div className="inline-flex items-center rounded-lg border border-border/45 bg-background/25 p-1">
-          <Button
-            size="sm"
-            variant={statusFilterMode === 'all' ? 'default' : 'ghost'}
-            onClick={() => setStatusFilterMode('all')}
-            className={`${panelTokens.control} px-3.5 ${statusFilterMode === 'all' ? '' : 'text-muted-foreground hover:text-foreground'}`}
-          >
-            {statusFilterMode === 'all' ? `Tất cả (${filterCounts.status.all})` : 'Tất cả'}
-          </Button>
-          <Button
-            size="sm"
-            variant={statusFilterMode === 'pending' ? 'default' : 'ghost'}
-            onClick={() => setStatusFilterMode('pending')}
-            className={`${panelTokens.control} px-3.5 ${statusFilterMode === 'pending' ? '' : 'text-muted-foreground hover:text-foreground'}`}
-          >
-            {statusFilterMode === 'pending' ? `Chưa gửi (${filterCounts.status.pending})` : 'Chưa gửi'}
-          </Button>
-          <Button
-            size="sm"
-            variant={statusFilterMode === 'sent' ? 'default' : 'ghost'}
-            onClick={() => setStatusFilterMode('sent')}
-            className={`${panelTokens.control} px-3.5 ${statusFilterMode === 'sent' ? '' : 'text-muted-foreground hover:text-foreground'}`}
-          >
-            {statusFilterMode === 'sent' ? `Đã gửi (${filterCounts.status.sent})` : 'Đã gửi'}
-          </Button>
-          <Button
-            size="sm"
-            variant={statusFilterMode === 'dry-run-success' ? 'default' : 'ghost'}
-            onClick={() => setStatusFilterMode('dry-run-success')}
-            className={`${panelTokens.control} px-3.5 ${statusFilterMode === 'dry-run-success' ? '' : 'text-muted-foreground hover:text-foreground'}`}
-          >
-            {statusFilterMode === 'dry-run-success'
-              ? `Chạy thử (${filterCounts.status.dryRunSuccess})`
-              : 'Chạy thử'}
-          </Button>
+        {/* Status filter — segmented control */}
+        <div className={cn(panelTokens.toolbar, 'inline-flex shrink-0 p-1')}>
+          {(
+            [
+              { mode: 'all', label: 'Tất cả', count: filterCounts.status.all },
+              { mode: 'pending', label: 'Chưa gửi', count: filterCounts.status.pending },
+              { mode: 'sent', label: 'Đã gửi', count: filterCounts.status.sent },
+              { mode: 'dry-run-success', label: 'Chạy thử', count: filterCounts.status.dryRunSuccess }
+            ] as { mode: GroupStatusFilterMode; label: string; count: number }[]
+          ).map(({ mode, label, count }) => {
+            const isActive = statusFilterMode === mode;
+            return (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => setStatusFilterMode(mode)}
+                className={cn(
+                  'inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-sm font-medium transition-all',
+                  isActive
+                    ? 'bg-background text-foreground shadow-sm ring-1 ring-border/50'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                {label}
+                {isActive ? (
+                  <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] tabular-nums text-primary">
+                    {count}
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
         </div>
-        <Select
+
+        {/* Permission select */}
+        <select
           value={permissionFilterMode}
-          onValueChange={(value) => setPermissionFilterMode(value as GroupPermissionFilterMode)}
+          onChange={(event) => setPermissionFilterMode(event.target.value as GroupPermissionFilterMode)}
+          className={`${panelTokens.control} h-10 w-[156px] shrink-0 rounded-lg border border-border/50 bg-background/60 px-3 text-sm text-foreground`}
+          aria-label="Lọc quyền gửi"
         >
-          <SelectTrigger className={`${panelTokens.control} w-[176px] border-border/60 bg-background/60`}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Mọi quyền</SelectItem>
-            <SelectItem value="allowed">Gửi được</SelectItem>
-            <SelectItem value="unknown">Cần kiểm tra</SelectItem>
-            <SelectItem value="blocked">Không gửi được</SelectItem>
-          </SelectContent>
-        </Select>
+          <option value="all">Mọi quyền</option>
+          <option value="allowed">Gửi được</option>
+          <option value="unknown">Cần kiểm tra</option>
+          <option value="blocked">Không gửi được</option>
+        </select>
+
         <Button
           size="sm"
           variant={showAdvancedFilters || hasMinMembersFilter ? 'secondary' : 'outline'}
           onClick={() => setShowAdvancedFilters((prev) => !prev)}
-          className={`${panelTokens.control} gap-1.5 px-3`}
+          className={`${panelTokens.control} shrink-0 gap-1.5 px-3`}
         >
-          <SlidersHorizontal className="h-4 w-4" />
-          Bộ lọc nâng cao
+          <SlidersHorizontal className="h-3.5 w-3.5" />
+          Nâng cao
         </Button>
       </div>
       {showAdvancedFilters ? (

@@ -164,22 +164,26 @@ export function ConnectionSettingsModal({
   return (
     <div
       className={cn(
-        'fixed inset-0 z-50 flex items-end justify-center bg-black/55 p-0 transition-opacity duration-200 backdrop-blur-[2px] sm:items-center sm:p-4',
+        'fixed inset-0 z-50 flex items-end justify-center p-0 transition-opacity duration-200 sm:items-center sm:p-4',
         isVisible ? 'opacity-100' : 'opacity-0'
       )}
       role="dialog"
       aria-modal="true"
       aria-label="Cài đặt kết nối"
-      onClick={() => onOpenChange(false)}
     >
+      <button
+        type="button"
+        aria-label="Đóng cài đặt kết nối"
+        className="absolute inset-0 bg-black/55 backdrop-blur-[2px]"
+        onClick={() => onOpenChange(false)}
+      />
       <section
         ref={modalRef}
         className={cn(
-          'flex h-[100dvh] w-full flex-col overflow-hidden border border-border/70 bg-background shadow-[0_24px_80px_-36px_rgba(0,0,0,0.95)] transition-all duration-200',
+          'relative flex h-[100dvh] w-full flex-col overflow-hidden border border-border/70 bg-background shadow-[0_24px_80px_-36px_rgba(0,0,0,0.95)] transition-all duration-200',
           'rounded-none sm:h-auto sm:max-h-[min(92dvh,920px)] sm:max-w-[min(960px,95vw)] sm:rounded-2xl',
           isVisible ? 'translate-y-0 sm:scale-100' : 'translate-y-6 sm:scale-[0.985]'
         )}
-        onClick={(event) => event.stopPropagation()}
       >
         <header className="flex items-start justify-between gap-3 border-b border-border/70 bg-gradient-to-r from-background via-background to-accent/10 px-4 py-4 sm:px-5">
           <div className="min-w-0">

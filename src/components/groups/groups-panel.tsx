@@ -1,5 +1,5 @@
 import dayjs from 'dayjs';
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { RefreshCw, Users } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -20,6 +20,7 @@ interface GroupsPanelProps {
 }
 
 export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX.Element {
+  const didClearSearchAfterSyncRef = useRef(false);
   const activeCampaign = useCampaignStore((state) => state.activeCampaign);
   const targets = useCampaignStore((state) => state.targets);
   const queueProgress = useCampaignStore((state) => state.queueProgress);
@@ -51,6 +52,7 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
   });
 
   const syncState = useGroupsSync({ groupsLength: groups.length, lastSyncedAt });
+  const clearSearchInput = filterState.clearSearchInput;
   const controller = useGroupsPanelController({
     activeCampaign,
     targets,
@@ -62,10 +64,16 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
   });
 
   useEffect(() => {
-    if (syncState.syncMutation.isSuccess) {
-      filterState.clearSearchInput();
+    if (syncState.syncMutation.isSuccess && !didClearSearchAfterSyncRef.current) {
+      clearSearchInput();
+      didClearSearchAfterSyncRef.current = true;
+      return;
     }
-  }, [filterState, syncState.syncMutation.isSuccess, syncState.syncMutation.status]);
+
+    if (!syncState.syncMutation.isSuccess) {
+      didClearSearchAfterSyncRef.current = false;
+    }
+  }, [clearSearchInput, syncState.syncMutation.isSuccess]);
 
   const onSyncPrimaryAction = () => {
     if (syncState.isConnectionBlocked) {
@@ -90,20 +98,37 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
 
   return (
     <Card className="flex h-full min-h-0 flex-col overflow-hidden border-border/80 bg-card/80 backdrop-blur-sm">
-      <CardHeader className={`space-y-1 border-b border-border/70 ${panelTokens.cardHeader}`}>
-        <CardTitle className="flex items-center justify-between text-sm">
-          <span>Nhóm</span>
-          <div className="flex items-center gap-2">
-            <Badge variant="outline" className={`h-6 items-center justify-center gap-1 rounded-full px-2 py-0 text-xs leading-none ${syncState.isSyncLoading ? 'border-primary/40 text-primary' : ''}`}>
-              {syncState.isSyncLoading ? <RefreshCw className="h-3 w-3 animate-spin text-primary/90" /> : null}
+      <CardHeader className="border-b border-border/70 px-4 py-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+              <Users className="h-4 w-4" />
+            </div>
+            <div>
+              <CardTitle className="text-sm font-semibold leading-none text-foreground">Nhóm</CardTitle>
+              <p className="mt-0.5 text-[10px] text-muted-foreground">
+                Đồng bộ lần cuối:{' '}
+                {lastSyncedAt ? dayjs(lastSyncedAt).format('YYYY-MM-DD HH:mm:ss') : 'chưa có'}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Badge
+              variant="outline"
+              className={`h-6 gap-1.5 rounded-full px-2.5 text-xs ${syncState.isSyncLoading ? 'border-primary/40 text-primary' : ''}`}
+            >
+              {syncState.isSyncLoading ? (
+                <RefreshCw className="h-3 w-3 animate-spin" />
+              ) : null}
               {syncState.groupCountLabel}
             </Badge>
-            <Badge variant="secondary" className="h-6 items-center justify-center rounded-full px-2 py-0 text-xs leading-none">
-              {selectedIds.size} đã chọn
-            </Badge>
+            {selectedIds.size > 0 ? (
+              <Badge variant="secondary" className="h-6 rounded-full px-2.5 text-xs tabular-nums">
+                {selectedIds.size} đã chọn
+              </Badge>
+            ) : null}
           </div>
-        </CardTitle>
-        <div className="text-xs text-muted-foreground">Đồng bộ lần cuối: {lastSyncedAt ? dayjs(lastSyncedAt).format('YYYY-MM-DD HH:mm:ss') : 'chưa có'}</div>
+        </div>
       </CardHeader>
       <CardContent className={`flex min-h-0 flex-1 flex-col overflow-hidden pt-3 ${panelTokens.cardContent}`}>
         <GroupsSyncBar

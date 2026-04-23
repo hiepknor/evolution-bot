@@ -1,7 +1,10 @@
 import dayjs from 'dayjs';
+import { AlertCircle, Clock, Send, Tag } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
+import { cn } from '@/lib/utils/cn';
 import { useCampaignStore } from '@/stores/use-campaign-store';
 import { useSettingsStore } from '@/stores/use-settings-store';
 
@@ -46,6 +49,10 @@ export function FooterStatus(): JSX.Element {
   const roundedPercent = Number.isFinite(percent) ? Math.round(percent) : 0;
   const processed = progress?.processed ?? 0;
   const total = progress?.total ?? 0;
+  const failedCount = progress?.failed ?? 0;
+  const skippedCount = progress?.skipped ?? 0;
+  const sentCount = progress?.sent ?? 0;
+  const dryRunCount = progress?.dryRunSuccess ?? 0;
   const campaignStatus = activeCampaign?.status ?? 'draft';
   const liveMode = running || stopping;
   const finishedMode = !liveMode && ['completed', 'failed', 'stopped'].includes(campaignStatus);
@@ -123,48 +130,125 @@ export function FooterStatus(): JSX.Element {
           : formatRemainingTime(liveEtaMs)
     : '-';
 
-  const durationDisplay = finishedMode ? formatCampaignDuration(activeCampaign?.startedAt, activeCampaign?.finishedAt) : '-';
-  const progressSummary = total > 0 ? `Tiến độ: ${roundedPercent}% (${processed}/${total})` : 'Chưa có chiến dịch đang theo dõi';
+  const durationDisplay = finishedMode
+    ? formatCampaignDuration(activeCampaign?.startedAt, activeCampaign?.finishedAt)
+    : '-';
   const campaignName = activeCampaign?.name?.trim() || '';
   const campaignDisplay = campaignName || activeCampaign?.id || '-';
-  const campaignTitle = activeCampaign ? `Tên: ${campaignName || '(chưa đặt)'}\nID: ${activeCampaign.id}` : '-';
+  const campaignTitle = activeCampaign
+    ? `Tên: ${campaignName || '(chưa đặt)'}\nID: ${activeCampaign.id}`
+    : '-';
+
+  const hasError = failedCount > 0;
 
   return (
-    <footer className="space-y-3 border-t border-border/80 bg-card/70 px-4 py-3">
-      <div className="rounded-lg border border-border/40 bg-background/35 px-3 py-2">
-        <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-sm text-foreground/90">
-          <div className="font-medium">{progressSummary}</div>
-          <div className="flex items-center gap-2">
-            {showLastRunHint ? <span className="text-xs text-muted-foreground">Kết quả lần chạy gần nhất</span> : null}
-            <Badge variant={campaignStatusVariant} className="h-6 min-w-[92px] justify-center whitespace-nowrap rounded-full px-2">
-              {campaignStatusLabel}
-            </Badge>
-          </div>
+    <footer className="border-t border-border/80 bg-card/70 px-4 py-3 backdrop-blur">
+      {/* Progress row */}
+      <div className="mb-2.5 flex items-center gap-3">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          {total > 0 ? (
+            <span className="shrink-0 text-xs font-semibold tabular-nums text-foreground/80">
+              {roundedPercent}%
+            </span>
+          ) : null}
+          <Progress value={percent} className="h-1.5 flex-1" />
+          {total > 0 ? (
+            <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+              {processed}/{total}
+            </span>
+          ) : (
+            <span className="text-[11px] text-muted-foreground">Chưa có chiến dịch</span>
+          )}
         </div>
-        <Progress value={percent} />
+        <div className="flex shrink-0 items-center gap-2">
+          {showLastRunHint ? (
+            <span className="text-[10px] text-muted-foreground">Lần chạy gần nhất</span>
+          ) : null}
+          <Badge
+            variant={campaignStatusVariant}
+            className="h-5 min-w-[80px] justify-center rounded-full px-2.5 text-[10px] font-semibold"
+          >
+            {campaignStatusLabel}
+          </Badge>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 text-xs text-foreground/90 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-md border border-border/40 bg-background/35 px-3 py-2">
-          <p className="text-[11px] text-muted-foreground">Kết quả gửi</p>
-          <p className="mt-1">Thật: {progress?.sent ?? 0} • Thử: {progress?.dryRunSuccess ?? 0}</p>
+      {/* Stats row */}
+      <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+        {/* Đã gửi */}
+        <div className="flex items-center gap-2.5 rounded-lg border border-border/35 bg-background/40 px-3 py-2">
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-success/10 text-success">
+            <Send className="h-3.5 w-3.5" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Đã gửi</p>
+            <div className="mt-0.5 flex items-baseline gap-1.5">
+              <span className="text-sm font-semibold tabular-nums text-foreground">{sentCount}</span>
+              {dryRunCount > 0 && (
+                <span className="text-[10px] text-muted-foreground">{dryRunCount} thử</span>
+              )}
+            </div>
+          </div>
         </div>
-        <div className="rounded-md border border-border/40 bg-background/35 px-3 py-2">
-          <p className="text-[11px] text-muted-foreground">Lỗi và bỏ qua</p>
-          <p className="mt-1">Lỗi: {progress?.failed ?? 0} • Bỏ qua: {progress?.skipped ?? 0}</p>
+
+        {/* Lỗi / bỏ qua */}
+        <div className="flex items-center gap-2.5 rounded-lg border border-border/35 bg-background/40 px-3 py-2">
+          <div
+            className={cn(
+              'flex h-7 w-7 shrink-0 items-center justify-center rounded-md',
+              hasError ? 'bg-destructive/10 text-destructive' : 'bg-muted/40 text-muted-foreground'
+            )}
+          >
+            <AlertCircle className="h-3.5 w-3.5" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Lỗi / bỏ qua</p>
+            <div className="mt-0.5 flex items-baseline gap-1">
+              <span
+                className={cn(
+                  'text-sm font-semibold tabular-nums',
+                  hasError ? 'text-destructive' : 'text-foreground'
+                )}
+              >
+                {failedCount}
+              </span>
+              <span className="text-[10px] text-muted-foreground">/ {skippedCount}</span>
+            </div>
+          </div>
         </div>
-        <div className="rounded-md border border-border/40 bg-background/35 px-3 py-2">
-          <p className="text-[11px] text-muted-foreground">Thời gian</p>
-          <p className="mt-1">{finishedMode ? `Thời lượng: ${durationDisplay}` : `Ước tính còn lại: ${etaDisplay}`}</p>
+
+        {/* Thời gian */}
+        <div className="flex items-center gap-2.5 rounded-lg border border-border/35 bg-background/40 px-3 py-2">
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+            <Clock className="h-3.5 w-3.5" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+              {finishedMode ? 'Thời lượng' : 'Còn lại'}
+            </p>
+            <p className="mt-0.5 text-sm font-semibold tabular-nums text-foreground">
+              {finishedMode ? durationDisplay : etaDisplay}
+            </p>
+          </div>
         </div>
-        <div className="rounded-md border border-border/40 bg-background/35 px-3 py-2" title={campaignTitle}>
-          <p className="text-[11px] text-muted-foreground">Chiến dịch hiện tại</p>
-          <p className="mt-1 truncate">{campaignDisplay}</p>
-          <p className="mt-1 text-[11px] text-muted-foreground">
-            {finishedMode
-              ? `Kết thúc: ${activeCampaign?.finishedAt ? dayjs(activeCampaign.finishedAt).format('HH:mm:ss') : '-'}`
-              : `Bắt đầu: ${activeCampaign?.startedAt ? dayjs(activeCampaign.startedAt).format('HH:mm:ss') : '-'}`}
-          </p>
+
+        {/* Chiến dịch */}
+        <div
+          className="flex items-center gap-2.5 rounded-lg border border-border/35 bg-background/40 px-3 py-2"
+          title={campaignTitle}
+        >
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-accent/40 text-accent-foreground">
+            <Tag className="h-3.5 w-3.5" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Chiến dịch</p>
+            <p className="mt-0.5 truncate text-sm font-semibold text-foreground">{campaignDisplay}</p>
+            <p className="text-[10px] text-muted-foreground">
+              {finishedMode
+                ? `Xong ${activeCampaign?.finishedAt ? dayjs(activeCampaign.finishedAt).format('HH:mm:ss') : '-'}`
+                : `Từ ${activeCampaign?.startedAt ? dayjs(activeCampaign.startedAt).format('HH:mm:ss') : '-'}`}
+            </p>
+          </div>
         </div>
       </div>
     </footer>
