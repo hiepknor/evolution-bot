@@ -67,7 +67,7 @@ export function ActivityLogFloatingModal({ screenFlag }: ActivityLogFloatingModa
           type="button"
           variant="secondary"
           className={cn(
-            'fixed z-40 border border-border/70 bg-card/95 text-xs shadow-[0_18px_40px_-28px_rgba(0,0,0,0.85)] backdrop-blur',
+            'fixed z-40 border border-border/55 bg-card text-xs text-foreground shadow-[0_16px_34px_-28px_rgba(0,0,0,0.82)]',
             isSmallScreen
               ? 'bottom-24 right-4 h-10 rounded-full px-4'
               : 'right-0 top-1/2 h-14 w-10 -translate-y-1/2 rounded-l-xl rounded-r-none border-r-0 px-0'
@@ -107,7 +107,7 @@ export function ActivityLogFloatingModal({ screenFlag }: ActivityLogFloatingModa
               'fixed z-40 overflow-hidden transition-all duration-200',
               isSmallScreen
                 ? 'inset-x-3 bottom-24 h-[min(68dvh,620px)]'
-                : 'bottom-16 right-3 top-20 w-[min(540px,calc(100vw-1.5rem))]',
+                : 'bottom-20 right-3 top-24 w-[min(460px,calc(100vw-1.5rem))]',
               isVisible
                 ? 'translate-x-0 translate-y-0 opacity-100'
                 : isSmallScreen
@@ -119,11 +119,12 @@ export function ActivityLogFloatingModal({ screenFlag }: ActivityLogFloatingModa
             aria-label="Nhật ký hoạt động"
           >
             <ActivityLogPanel
+              compact={!isSmallScreen}
               onRequestClose={() => setOpen(false)}
               className={
                 isSmallScreen
-                  ? 'h-full rounded-2xl border-border/70 bg-card/95 shadow-[0_20px_48px_-28px_rgba(0,0,0,0.9)] backdrop-blur'
-                  : 'h-full rounded-2xl border-border/60 bg-card/95 shadow-[-20px_0_46px_-30px_rgba(0,0,0,0.9)] backdrop-blur'
+                  ? 'h-full rounded-2xl border-border/60 bg-card shadow-[0_20px_44px_-28px_rgba(0,0,0,0.88)]'
+                  : 'h-full rounded-2xl border-border/50 bg-card shadow-[-18px_0_40px_-30px_rgba(0,0,0,0.86)]'
               }
             />
           </section>

@@ -17,9 +17,11 @@ import { GroupsTable } from '@/components/groups/panel/groups-table';
 
 interface GroupsPanelProps {
   onOpenConnectionSettings?: () => void;
+  density?: 'comfortable' | 'compact';
 }
 
-export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX.Element {
+export function GroupsPanel({ onOpenConnectionSettings, density = 'comfortable' }: GroupsPanelProps): JSX.Element {
+  const isCompact = density === 'compact';
   const didClearSearchAfterSyncRef = useRef(false);
   const activeCampaign = useCampaignStore((state) => state.activeCampaign);
   const targets = useCampaignStore((state) => state.targets);
@@ -98,7 +100,7 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
 
   return (
     <Card className="flex h-full min-h-0 flex-col overflow-hidden border-border/80 bg-card/80 backdrop-blur-sm">
-      <CardHeader className="border-b border-border/70 px-4 py-3">
+      <CardHeader className={isCompact ? 'border-b border-border/70 px-3 py-2.5' : 'border-b border-border/70 px-4 py-3'}>
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
@@ -130,7 +132,7 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
           </div>
         </div>
       </CardHeader>
-      <CardContent className={`flex min-h-0 flex-1 flex-col overflow-hidden pt-3 ${panelTokens.cardContent}`}>
+      <CardContent className={`flex min-h-0 flex-1 flex-col overflow-hidden ${isCompact ? 'pt-2.5' : 'pt-3'} ${panelTokens.cardContent}`}>
         <GroupsSyncBar
           visibleSummary={visibleSummary}
           listModeLabel={listModeLabel}
@@ -152,10 +154,10 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
           syncDisabledReason={syncState.syncDisabledReason}
         />
 
-        <div className="isolate flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border border-border">
+        <div className="isolate flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border border-border/80 bg-background/[0.08]">
           {hasGroups ? (
             <>
-              <div className="space-y-2 border-b border-border/55 bg-card/85 p-3">
+              <div className={isCompact ? 'space-y-1.5 border-b border-border/45 bg-card/70 p-2.5' : 'space-y-2 border-b border-border/45 bg-card/70 p-3'}>
                 <GroupsFilterBar searchInputRef={controller.searchInputRef} setSearchTerm={setSearchTerm} {...filterState} />
                 <GroupsSelectionToolbar
                   selectedVisibleCount={selectionState.selectedVisibleCount}
@@ -168,9 +170,10 @@ export function GroupsPanel({ onOpenConnectionSettings }: GroupsPanelProps): JSX
                   onInvertSelectionVisible={selectionState.onInvertSelectionVisible}
                 />
               </div>
-              <div ref={controller.tableViewportRef} className="min-h-0 flex-1 overflow-auto">
+              <div ref={controller.tableViewportRef} className="min-h-0 flex-1 overflow-auto bg-card/[0.45]">
                 <GroupsTable
                   viewportRef={controller.tableViewportRef}
+                  density={density}
                   filtered={filterState.filtered}
                   selectedIds={selectedIds}
                   groupStatusByChatId={filterState.groupStatusByChatId}

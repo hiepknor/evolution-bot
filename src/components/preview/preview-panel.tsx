@@ -11,11 +11,6 @@ import { composeFinalMessage } from '@/lib/templates/render-template';
 import { useComposerStore } from '@/stores/use-composer-store';
 import { useGroupsStore } from '@/stores/use-groups-store';
 
-const formatChatId = (chatId: string): string => {
-  if (chatId.length <= 28) return chatId;
-  return `${chatId.slice(0, 12)}...${chatId.slice(-10)}`;
-};
-
 const compactChatId = (chatId: string): string => {
   if (chatId.length <= 22) return chatId;
   return `${chatId.slice(0, 8)}...${chatId.slice(-8)}`;

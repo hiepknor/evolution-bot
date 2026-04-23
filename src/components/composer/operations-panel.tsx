@@ -10,7 +10,6 @@ import {
   AlertDialogTitle
 } from '@/components/ui/alert-dialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { panelTokens } from '@/components/layout/panel-tokens';
 import { useCampaignStore } from '@/stores/use-campaign-store';
 import { useActivityLogStore } from '@/stores/use-activity-log-store';
 import { useComposerStore } from '@/stores/use-composer-store';

@@ -28,7 +28,7 @@ export const selectedCheckboxClass =
   'border-border/70 data-[state=checked]:border-emerald-400/90 data-[state=checked]:bg-emerald-500/90 data-[state=checked]:text-emerald-50';
 
 export const stickyHeaderCellClass =
-  'sticky top-0 z-20 bg-card px-3 py-2.5 align-middle text-[10px] font-medium uppercase tracking-wide text-muted-foreground shadow-[inset_0_-1px_0_hsl(var(--border))]';
+  'sticky top-0 z-20 bg-[hsl(var(--card)/0.95)] px-3 py-2.5 align-middle text-[10px] font-semibold uppercase tracking-[0.08em] text-foreground/84 backdrop-blur-sm shadow-[inset_0_-1px_0_hsl(var(--border-soft)/0.85),inset_0_1px_0_hsl(var(--border-soft)/0.35)]';
 
 export const getGroupStatusMeta = (
   status: TargetStatus | undefined,

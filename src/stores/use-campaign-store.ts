@@ -161,6 +161,7 @@ interface CampaignStore {
   exportCampaignCsv: (campaignId: string) => Promise<void>;
   deleteCampaign: (campaignId: string) => Promise<void>;
   clearCampaignLogs: () => void;
+  replaceCampaignLogs: (logs: CampaignLog[]) => void;
   openCampaign: (campaignId: string) => Promise<void>;
 }
 
@@ -630,6 +631,10 @@ export const useCampaignStore = create<CampaignStore>((set, get) => ({
 
   clearCampaignLogs: () => {
     set({ logs: [] });
+  },
+
+  replaceCampaignLogs: (logs) => {
+    set({ logs });
   },
 
   openCampaign: async (campaignId) => {

@@ -1,6 +1,5 @@
 import type { RefObject } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { Copy } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import type { Group, TargetStatus } from '@/lib/types/domain';
 import { MemoizedGroupsTableRow } from '@/components/groups/panel/groups-table-row';
@@ -12,6 +11,7 @@ import {
 
 interface GroupsTableProps {
   viewportRef: RefObject<HTMLDivElement | null>;
+  density?: 'comfortable' | 'compact';
   filtered: Group[];
   selectedIds: Set<string>;
   groupStatusByChatId: Map<string, TargetStatus>;
@@ -30,6 +30,7 @@ interface GroupsTableProps {
 
 export function GroupsTable({
   viewportRef,
+  density = 'comfortable',
   filtered,
   selectedIds,
   groupStatusByChatId,
@@ -45,11 +46,12 @@ export function GroupsTable({
   onToggleListMembership,
   setRowRef
 }: GroupsTableProps): JSX.Element {
+  const headerTextClass = 'text-[11px]';
   const virtualEnabled = filtered.length > 200;
   const rowVirtualizer = useVirtualizer({
     count: filtered.length,
     getScrollElement: () => viewportRef.current,
-    estimateSize: () => 44,
+    estimateSize: () => 40,
     overscan: 10,
     enabled: virtualEnabled
   });
@@ -65,7 +67,7 @@ export function GroupsTable({
     : filtered.map((group) => ({ group, key: group.chatId }));
 
   return (
-    <table className="relative z-0 w-full table-fixed border-separate border-spacing-0 text-sm leading-5">
+    <table className="relative z-0 w-full table-fixed border-separate border-spacing-0 text-[13px] leading-[1.25rem] transition-[font-size,line-height] duration-200 ease-out">
       <colgroup>
         <col className="w-[4%]" />
         <col className="w-[27%]" />
@@ -78,7 +80,7 @@ export function GroupsTable({
       </colgroup>
       <thead>
         <tr>
-          <th className={`${stickyHeaderCellClass} whitespace-nowrap text-left`}>
+          <th className={`${stickyHeaderCellClass} ${headerTextClass} whitespace-nowrap text-left`}>
             <Checkbox
               className={selectedCheckboxClass}
               checked={allVisibleSelected}
@@ -86,15 +88,13 @@ export function GroupsTable({
               onCheckedChange={(checked) => (checked ? onSelectAll() : onDeselectAll())}
             />
           </th>
-          <th className={`${stickyHeaderCellClass} whitespace-nowrap text-left`}>Nhóm</th>
-          <th className={`${stickyHeaderCellClass} whitespace-nowrap text-right`}>Thành viên</th>
-          <th className={`${stickyHeaderCellClass} whitespace-nowrap text-left`}>Chat ID</th>
-          <th className={`${stickyHeaderCellClass} whitespace-nowrap text-center`}>
-            <Copy className="mx-auto h-4 w-4 text-muted-foreground" />
-          </th>
-          <th className={`${stickyHeaderCellClass} whitespace-nowrap text-left`}>Quyền gửi</th>
-          <th className={`${stickyHeaderCellClass} whitespace-nowrap text-center`}>Hành động</th>
-          <th className={`${stickyHeaderCellClass} whitespace-nowrap text-left`}>Trạng thái</th>
+          <th className={`${stickyHeaderCellClass} ${headerTextClass} whitespace-nowrap text-left`}>Nhóm</th>
+          <th className={`${stickyHeaderCellClass} ${headerTextClass} whitespace-nowrap text-right`}>Thành viên</th>
+          <th className={`${stickyHeaderCellClass} ${headerTextClass} whitespace-nowrap text-left`}>Chat ID</th>
+          <th className={`${stickyHeaderCellClass} ${headerTextClass} whitespace-nowrap text-center`} />
+          <th className={`${stickyHeaderCellClass} ${headerTextClass} whitespace-nowrap text-left`}>Quyền gửi</th>
+          <th className={`${stickyHeaderCellClass} ${headerTextClass} whitespace-nowrap text-center`}>Hành động</th>
+          <th className={`${stickyHeaderCellClass} ${headerTextClass} whitespace-nowrap text-left`}>Trạng thái</th>
         </tr>
       </thead>
       <tbody>
@@ -117,6 +117,7 @@ export function GroupsTable({
               <MemoizedGroupsTableRow
                 key={key}
                 group={group}
+                density={density}
                 targetStatus={groupStatusByChatId.get(group.chatId)}
                 listPolicy={listPolicy}
                 selected={selectedIds.has(group.chatId)}

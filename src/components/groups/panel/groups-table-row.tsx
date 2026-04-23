@@ -15,6 +15,7 @@ import {
 
 interface GroupsTableRowProps {
   group: Group;
+  density?: 'comfortable' | 'compact';
   targetStatus: TargetStatus | undefined;
   listPolicy: { listed: boolean; blocked: boolean; reason: string | null };
   selected: boolean;
@@ -40,6 +41,12 @@ export function GroupsTableRow({
   onToggleListMembership,
   rowRef
 }: GroupsTableRowProps): JSX.Element {
+  const rowTextClass = 'text-[13px]';
+  const monoTextClass = 'text-[13px]';
+  const badgeTextClass = 'h-5 whitespace-nowrap px-2 text-[11px]';
+  const actionButtonTextClass = 'h-[22px] gap-1 px-2 text-[11px]';
+  const cellClass = 'px-2.5 py-1.5 align-middle';
+  const centerCellClass = 'px-2 py-1.5 align-middle text-center';
   const permissionState = resolveEffectivePermissionState(group, listPolicy.blocked);
   const statusMeta = getGroupStatusMeta(targetStatus, permissionState, listPolicy.blocked);
   const isRunningRow = targetStatus === 'running';
@@ -69,25 +76,38 @@ export function GroupsTableRow({
       : 'Thêm chat id vào danh sách chặn';
 
   const isCopied = copiedChatId === group.chatId;
+  const permissionBadgeClass = permissionMeta.variant === 'success'
+    ? 'border border-success/28 bg-success/[0.09] text-success'
+    : permissionMeta.variant === 'destructive'
+      ? 'border border-destructive/28 bg-destructive/[0.1] text-destructive'
+      : 'border border-warning/28 bg-warning/[0.1] text-warning';
+
+  const statusBadgeClass = statusMeta.variant === 'success'
+    ? 'border border-success/28 bg-success/[0.09] text-success'
+    : statusMeta.variant === 'destructive'
+      ? 'border border-destructive/28 bg-destructive/[0.1] text-destructive'
+      : statusMeta.variant === 'warning'
+        ? 'border border-warning/28 bg-warning/[0.1] text-warning'
+        : 'border border-slate-400/32 bg-slate-500/[0.14] text-slate-100';
 
   return (
     <tr
       ref={rowRef}
       aria-selected={selected}
       className={[
-        'border-t border-border/60 transition-colors',
+        'border-t border-border/60 transition-[background-color,opacity,padding,font-size,line-height] duration-200 ease-out',
         isRunningRow
-          ? 'bg-amber-500/10 ring-1 ring-inset ring-amber-400/35'
+          ? 'bg-amber-500/[0.055] ring-1 ring-inset ring-amber-400/22'
           : selected
-            ? 'bg-emerald-500/10 ring-1 ring-inset ring-emerald-400/40'
-            : 'odd:bg-card even:bg-card/90 hover:bg-muted/15',
-        isSelectionBlocked ? 'opacity-60' : ''
+            ? 'bg-emerald-500/[0.045] ring-1 ring-inset ring-emerald-400/20'
+            : 'odd:bg-card even:bg-card/97 hover:bg-muted/14',
+        isSelectionBlocked ? 'opacity-70' : ''
       ]
         .filter(Boolean)
         .join(' ')}
     >
       {/* Checkbox */}
-      <td className="bg-inherit px-3 py-2 align-middle">
+      <td className={`bg-inherit ${cellClass} transition-[padding] duration-200 ease-out`}>
         <Checkbox
           className={selectedCheckboxClass}
           checked={selected}
@@ -96,31 +116,31 @@ export function GroupsTableRow({
       </td>
 
       {/* Group name */}
-      <td className="truncate px-3 py-2 align-middle" title={displayName}>
-        <span className={`text-sm ${hasDistinctName ? 'text-foreground' : 'text-muted-foreground'}`}>
+      <td className={`truncate ${cellClass} transition-[padding] duration-200 ease-out`} title={displayName}>
+        <span className={`${rowTextClass} ${hasDistinctName ? 'text-foreground' : 'text-muted-foreground'} transition-[font-size,line-height] duration-200 ease-out`}>
           {displayName}
         </span>
       </td>
 
       {/* Members count */}
-      <td className="whitespace-nowrap px-3 py-2 align-middle text-right text-sm tabular-nums text-foreground/80">
+      <td className={`whitespace-nowrap ${cellClass} ${rowTextClass} text-right tabular-nums text-foreground/90 transition-[padding,font-size,line-height] duration-200 ease-out`}>
         {group.membersCount}
       </td>
 
       {/* Chat ID */}
-      <td className="px-3 py-2 align-middle">
-        <span className="block min-w-0 truncate font-mono text-xs text-foreground/70" title={group.chatId}>
+      <td className={`${cellClass} transition-[padding] duration-200 ease-out`}>
+        <span className={`block min-w-0 truncate font-mono ${monoTextClass} text-foreground/88 transition-[font-size,line-height] duration-200 ease-out`} title={group.chatId}>
           {formatChatId(group.chatId)}
         </span>
       </td>
 
       {/* Copy button */}
-      <td className="px-2 py-2 align-middle text-center">
+      <td className={`${centerCellClass} transition-[padding] duration-200 ease-out`}>
         <button
           type="button"
           onClick={() => void onCopyChatId(group.chatId)}
           title="Sao chép chat id"
-          className={`inline-flex h-6 w-6 items-center justify-center rounded-md transition-colors ${
+          className={`inline-flex h-[22px] w-[22px] items-center justify-center rounded-md transition-colors ${
             isCopied
               ? 'text-success'
               : 'text-muted-foreground/50 hover:bg-muted hover:text-muted-foreground'
@@ -131,10 +151,10 @@ export function GroupsTableRow({
       </td>
 
       {/* Permission badge */}
-      <td className="px-3 py-2 align-middle">
+      <td className={`${cellClass} transition-[padding] duration-200 ease-out`}>
         <Badge
           variant={permissionMeta.variant}
-          className="whitespace-nowrap"
+          className={`${badgeTextClass} ${permissionBadgeClass}`}
           title={
             listPolicy.blocked
               ? (listPolicy.reason ?? 'Nhóm này bị chặn bởi cấu hình danh sách.')
@@ -148,17 +168,17 @@ export function GroupsTableRow({
       </td>
 
       {/* List action button */}
-      <td className="px-3 py-2 align-middle text-center">
+      <td className={`px-2.5 py-1.5 align-middle text-center transition-[padding] duration-200 ease-out`}>
         <button
           type="button"
           onClick={() => onToggleListMembership(group.chatId)}
           title={listActionTitle}
-          className={`inline-flex h-6 items-center gap-1 rounded-full border px-2.5 text-[11px] font-medium transition-colors ${
+          className={`inline-flex ${actionButtonTextClass} items-center rounded-full border font-medium transition-colors ${
             !whitelistMode && listPolicy.listed
               ? 'border-warning/40 bg-warning/8 text-warning hover:bg-warning/15'
               : listPolicy.listed
                 ? 'border-primary/35 bg-primary/8 text-primary hover:bg-primary/15'
-                : 'border-border/50 bg-background/30 text-muted-foreground hover:border-border/70 hover:bg-background/60 hover:text-foreground'
+                : 'border-border/65 bg-background/45 text-foreground/75 hover:border-primary/35 hover:bg-primary/[0.08] hover:text-foreground'
           }`}
         >
           {listPolicy.listed ? (
@@ -177,8 +197,8 @@ export function GroupsTableRow({
       </td>
 
       {/* Status badge */}
-      <td className="px-3 py-2 align-middle">
-        <Badge variant={statusMeta.variant} className="whitespace-nowrap">
+      <td className={`${cellClass} transition-[padding] duration-200 ease-out`}>
+        <Badge variant={statusMeta.variant} className={`${badgeTextClass} ${statusBadgeClass}`}>
           {statusMeta.label}
         </Badge>
       </td>
@@ -191,6 +211,7 @@ export const MemoizedGroupsTableRow = memo(
   (prev, next) =>
     prev.group.chatId === next.group.chatId &&
     prev.group.membersCount === next.group.membersCount &&
+    prev.density === next.density &&
     prev.selected === next.selected &&
     prev.canSend === next.canSend &&
     prev.copiedChatId === next.copiedChatId &&

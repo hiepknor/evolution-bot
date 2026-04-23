@@ -35,23 +35,25 @@ export function DashboardPage({ screenFlag, onOpenConnectionSettings }: Dashboar
   const isSmallScreen = screenFlag === 'small-screen';
   const isFullScreen = screenFlag === 'full-screen';
 
+  const fullScreenDensity = isFullScreen ? 'compact' : 'comfortable';
+
   const mainClassName = isSmallScreen
-    ? 'grid flex-1 grid-cols-1 gap-3 overflow-auto p-3 sm:gap-4 sm:p-4'
+    ? 'grid flex-1 grid-cols-1 gap-3 overflow-auto p-3 transition-[grid-template-columns,gap,padding] duration-300 ease-out sm:gap-4 sm:p-4'
     : isFullScreen
-      ? 'grid flex-1 grid-cols-[minmax(420px,34%)_minmax(0,1fr)] gap-5 overflow-hidden px-6 py-5'
-      : 'grid flex-1 grid-cols-1 gap-4 overflow-hidden p-4 lg:grid-cols-[380px_minmax(0,1fr)]';
+      ? 'grid flex-1 grid-cols-[380px_minmax(0,1fr)] gap-4 overflow-hidden px-4 py-4 transition-[grid-template-columns,gap,padding] duration-300 ease-out'
+      : 'grid flex-1 grid-cols-1 gap-4 overflow-hidden p-4 transition-[grid-template-columns,gap,padding] duration-300 ease-out lg:grid-cols-[380px_minmax(0,1fr)]';
   const leftSectionClassName = isSmallScreen
-    ? 'flex flex-col gap-3'
+    ? 'flex flex-col gap-3 transition-[gap] duration-300 ease-out'
     : isFullScreen
-      ? 'flex min-h-0 flex-col gap-5 overflow-hidden'
-      : 'flex min-h-0 flex-col gap-4 overflow-hidden';
+      ? 'flex min-h-0 min-w-0 flex-col gap-4 overflow-hidden transition-[gap] duration-300 ease-out'
+      : 'flex min-h-0 flex-col gap-4 overflow-hidden transition-[gap] duration-300 ease-out';
   const tabGridClassName = 'flex w-full rounded-lg border border-border/35 bg-background/55 p-1 shadow-sm backdrop-blur-sm';
   const contentClassName = isSmallScreen ? 'overflow-visible' : 'min-h-0 flex-1 overflow-auto';
   const rightSectionClassName = isSmallScreen
-    ? 'grid grid-cols-1 gap-3'
+    ? 'grid grid-cols-1 gap-3 transition-[gap] duration-300 ease-out'
     : isFullScreen
-      ? 'flex min-h-0 flex-col gap-5 overflow-hidden'
-      : 'flex min-h-0 flex-col gap-4 overflow-hidden';
+      ? 'flex min-h-0 min-w-0 flex-col gap-4 overflow-hidden transition-[gap] duration-300 ease-out'
+      : 'flex min-h-0 flex-col gap-4 overflow-hidden transition-[gap] duration-300 ease-out';
 
   useEffect(() => {
     if (screenFlag === 'small-screen') {
@@ -131,7 +133,7 @@ export function DashboardPage({ screenFlag, onOpenConnectionSettings }: Dashboar
         </section>
 
         <section className={rightSectionClassName}>
-          <GroupsPanel onOpenConnectionSettings={onOpenConnectionSettings} />
+          <GroupsPanel onOpenConnectionSettings={onOpenConnectionSettings} density={fullScreenDensity} />
         </section>
       </main>
 

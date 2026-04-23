@@ -142,27 +142,27 @@ export function FooterStatus(): JSX.Element {
   const hasError = failedCount > 0;
 
   return (
-    <footer className="border-t border-border/80 bg-card/70 px-4 py-3 backdrop-blur">
+    <footer className="border-t border-border/65 bg-card/62 px-4 py-3 backdrop-blur">
       {/* Progress row */}
       <div className="mb-2.5 flex items-center gap-3">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           {total > 0 ? (
-            <span className="shrink-0 text-xs font-semibold tabular-nums text-foreground/80">
+            <span className="shrink-0 text-xs font-semibold tabular-nums text-foreground/85">
               {roundedPercent}%
             </span>
           ) : null}
           <Progress value={percent} className="h-1.5 flex-1" />
           {total > 0 ? (
-            <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+            <span className="shrink-0 text-[11px] tabular-nums text-foreground/68">
               {processed}/{total}
             </span>
           ) : (
-            <span className="text-[11px] text-muted-foreground">Chưa có chiến dịch</span>
+            <span className="text-[11px] text-foreground/65">Chưa có chiến dịch</span>
           )}
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {showLastRunHint ? (
-            <span className="text-[10px] text-muted-foreground">Lần chạy gần nhất</span>
+            <span className="text-[10px] text-foreground/65">Lần chạy gần nhất</span>
           ) : null}
           <Badge
             variant={campaignStatusVariant}
@@ -176,23 +176,23 @@ export function FooterStatus(): JSX.Element {
       {/* Stats row */}
       <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
         {/* Đã gửi */}
-        <div className="flex items-center gap-2.5 rounded-lg border border-border/35 bg-background/40 px-3 py-2">
+        <div className="flex items-center gap-2.5 rounded-lg border border-border/30 bg-background/32 px-3 py-2">
           <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-success/10 text-success">
             <Send className="h-3.5 w-3.5" />
           </div>
           <div className="min-w-0">
-            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Đã gửi</p>
+            <p className="text-[10px] uppercase tracking-wide text-foreground/64">Đã gửi</p>
             <div className="mt-0.5 flex items-baseline gap-1.5">
               <span className="text-sm font-semibold tabular-nums text-foreground">{sentCount}</span>
               {dryRunCount > 0 && (
-                <span className="text-[10px] text-muted-foreground">{dryRunCount} thử</span>
+                <span className="text-[10px] text-foreground/62">{dryRunCount} thử</span>
               )}
             </div>
           </div>
         </div>
 
         {/* Lỗi / bỏ qua */}
-        <div className="flex items-center gap-2.5 rounded-lg border border-border/35 bg-background/40 px-3 py-2">
+        <div className="flex items-center gap-2.5 rounded-lg border border-border/30 bg-background/32 px-3 py-2">
           <div
             className={cn(
               'flex h-7 w-7 shrink-0 items-center justify-center rounded-md',
@@ -202,7 +202,7 @@ export function FooterStatus(): JSX.Element {
             <AlertCircle className="h-3.5 w-3.5" />
           </div>
           <div className="min-w-0">
-            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Lỗi / bỏ qua</p>
+            <p className="text-[10px] uppercase tracking-wide text-foreground/64">Lỗi / bỏ qua</p>
             <div className="mt-0.5 flex items-baseline gap-1">
               <span
                 className={cn(
@@ -212,18 +212,18 @@ export function FooterStatus(): JSX.Element {
               >
                 {failedCount}
               </span>
-              <span className="text-[10px] text-muted-foreground">/ {skippedCount}</span>
+              <span className="text-[10px] text-foreground/62">/ {skippedCount}</span>
             </div>
           </div>
         </div>
 
         {/* Thời gian */}
-        <div className="flex items-center gap-2.5 rounded-lg border border-border/35 bg-background/40 px-3 py-2">
+        <div className="flex items-center gap-2.5 rounded-lg border border-border/30 bg-background/32 px-3 py-2">
           <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
             <Clock className="h-3.5 w-3.5" />
           </div>
           <div className="min-w-0">
-            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+            <p className="text-[10px] uppercase tracking-wide text-foreground/64">
               {finishedMode ? 'Thời lượng' : 'Còn lại'}
             </p>
             <p className="mt-0.5 text-sm font-semibold tabular-nums text-foreground">
@@ -234,16 +234,16 @@ export function FooterStatus(): JSX.Element {
 
         {/* Chiến dịch */}
         <div
-          className="flex items-center gap-2.5 rounded-lg border border-border/35 bg-background/40 px-3 py-2"
+          className="flex items-center gap-2.5 rounded-lg border border-border/30 bg-background/32 px-3 py-2"
           title={campaignTitle}
         >
           <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-accent/40 text-accent-foreground">
             <Tag className="h-3.5 w-3.5" />
           </div>
           <div className="min-w-0">
-            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Chiến dịch</p>
+            <p className="text-[10px] uppercase tracking-wide text-foreground/64">Chiến dịch</p>
             <p className="mt-0.5 truncate text-sm font-semibold text-foreground">{campaignDisplay}</p>
-            <p className="text-[10px] text-muted-foreground">
+            <p className="text-[10px] text-foreground/62">
               {finishedMode
                 ? `Xong ${activeCampaign?.finishedAt ? dayjs(activeCampaign.finishedAt).format('HH:mm:ss') : '-'}`
                 : `Từ ${activeCampaign?.startedAt ? dayjs(activeCampaign.startedAt).format('HH:mm:ss') : '-'}`}
