@@ -77,12 +77,11 @@ export function ActivityLogFloatingModal({ screenFlag }: ActivityLogFloatingModa
                   'hover:border-primary/40 hover:bg-primary/10 hover:text-primary'
                 ].join(' ')
               : [
-                  'right-0 top-1/2 h-11 w-8 -translate-y-1/2',
-                  'rounded-l-xl rounded-r-none border border-r-0 border-border/35',
-                  'bg-card/80 backdrop-blur-sm',
-                  'text-muted-foreground/55',
-                  'shadow-[-3px_0_12px_-4px_rgba(0,0,0,0.4)]',
-                  'hover:border-primary/30 hover:bg-card/95 hover:text-primary/80 hover:w-9'
+                  'bottom-24 right-3 h-9 w-9 rounded-lg',
+                  'border border-border/45 bg-card/88 backdrop-blur-sm',
+                  'text-muted-foreground/80',
+                  'shadow-[0_10px_24px_-12px_rgba(0,0,0,0.55)]',
+                  'hover:border-primary/35 hover:bg-background/85 hover:text-primary'
                 ].join(' ')
           )}
         >
