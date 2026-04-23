@@ -251,51 +251,56 @@ export function HistoryPanel(): JSX.Element {
                   </div>
 
                   {/* Actions */}
-                  <div className="flex items-center gap-1.5">
-                    <Button
-                      size="sm"
-                      className={`${panelTokens.control} flex-1 px-3 font-medium`}
-                      onClick={() => void onOpenCampaign(item.id)}
-                    >
-                      Mở
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      className={`${panelTokens.control} flex-1 px-3`}
-                      onClick={() => {
-                        if (hasComposerDraft && !window.confirm('Đang có nội dung soạn thảo. Ghi đè?')) return;
-                        applyCampaignContent(item);
-                      }}
-                    >
-                      Dùng lại
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className={`${panelTokens.control} w-9 px-0`}
-                      onClick={() => void onExportCsv(item.id)}
-                      title="Xuất CSV"
-                      aria-label="Xuất CSV"
-                    >
-                      <Download className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className={`${panelTokens.control} w-9 border-destructive/35 px-0 text-destructive hover:bg-destructive/10 hover:border-destructive/50 disabled:pointer-events-none`}
-                      onClick={() => {
-                        if (item.status === 'running') { setActionError('Không thể xóa chiến dịch đang chạy'); return; }
-                        if (window.confirm(`Xóa chiến dịch "${item.name}"? Không thể hoàn tác.`)) {
-                          void onDeleteCampaign(item.id);
-                        }
-                      }}
-                      disabled={item.status === 'running'}
-                      title="Xóa chiến dịch"
-                      aria-label="Xóa chiến dịch"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
+                  <div className="flex items-stretch gap-1.5">
+                    <div className="flex min-w-0 flex-1 items-stretch rounded-lg border border-border/35 bg-background/25 p-0.5">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className={`${panelTokens.control} h-7 flex-1 rounded-md border-0 bg-primary/[0.14] px-2.5 text-sm font-semibold text-primary-foreground/95 hover:bg-primary/[0.22]`}
+                        onClick={() => void onOpenCampaign(item.id)}
+                      >
+                        Mở
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className={`${panelTokens.control} h-7 flex-1 rounded-md border-0 bg-transparent px-2.5 text-sm font-medium text-foreground/85 hover:bg-muted/[0.2]`}
+                        onClick={() => {
+                          if (hasComposerDraft && !window.confirm('Đang có nội dung soạn thảo. Ghi đè?')) return;
+                          applyCampaignContent(item);
+                        }}
+                      >
+                        Dùng lại
+                      </Button>
+                    </div>
+                    <div className="flex items-stretch rounded-lg border border-border/35 bg-background/25 p-0.5">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className={`${panelTokens.control} h-7 w-7 rounded-md border-0 bg-transparent px-0 text-muted-foreground/90 hover:bg-muted/[0.2] hover:text-foreground`}
+                        onClick={() => void onExportCsv(item.id)}
+                        title="Xuất CSV"
+                        aria-label="Xuất CSV"
+                      >
+                        <Download className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className={`${panelTokens.control} h-7 w-7 rounded-md border-0 bg-transparent px-0 text-destructive/75 hover:bg-destructive/[0.1] hover:text-destructive disabled:pointer-events-none`}
+                        onClick={() => {
+                          if (item.status === 'running') { setActionError('Không thể xóa chiến dịch đang chạy'); return; }
+                          if (window.confirm(`Xóa chiến dịch "${item.name}"? Không thể hoàn tác.`)) {
+                            void onDeleteCampaign(item.id);
+                          }
+                        }}
+                        disabled={item.status === 'running'}
+                        title="Xóa chiến dịch"
+                        aria-label="Xóa chiến dịch"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
                   </div>
                 </div>
               );

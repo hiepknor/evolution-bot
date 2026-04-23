@@ -73,10 +73,10 @@ export function ConnectionPanel(): JSX.Element {
 
   const disconnectedReason = (() => {
     if (badgeState !== 'disconnected') return null;
-    if (connectionStatus.hasError || lastErrorMessage) return { label: 'Do lỗi kết nối', toneClass: 'border-destructive/35 bg-destructive/[0.08] text-destructive' };
-    if (/ngắt kết nối/i.test(statusMessage)) return { label: 'Do người dùng ngắt', toneClass: 'border-warning/35 bg-warning/[0.08] text-warning' };
-    if (/cần kết nối lại|đã lưu cấu hình/i.test(statusMessage)) return { label: 'Do thay đổi cấu hình', toneClass: 'border-warning/35 bg-warning/[0.08] text-warning' };
-    return { label: 'Chưa kiểm tra kết nối', toneClass: 'border-border/50 bg-muted/30 text-muted-foreground' };
+    if (connectionStatus.hasError || lastErrorMessage) return { label: 'Lỗi kết nối', toneClass: 'border-destructive/30 bg-destructive/[0.06] text-destructive/90' };
+    if (/ngắt kết nối/i.test(statusMessage)) return { label: 'Ngắt thủ công', toneClass: 'border-warning/25 bg-warning/[0.05] text-warning/85' };
+    if (/cần kết nối lại|đã lưu cấu hình/i.test(statusMessage)) return { label: 'Đổi cấu hình', toneClass: 'border-warning/25 bg-warning/[0.05] text-warning/85' };
+    return { label: 'Chưa kiểm tra', toneClass: 'border-border/50 bg-muted/30 text-muted-foreground' };
   })();
 
   const noteToneClass = connectionStatus.hasError
@@ -86,6 +86,10 @@ export function ConnectionPanel(): JSX.Element {
       : badgeState === 'checking'
         ? 'text-warning'
         : 'text-muted-foreground';
+  const normalizedStatusMessage = statusMessage.trim();
+  const showStatusNote =
+    normalizedStatusMessage.length > 0 &&
+    normalizedStatusMessage.toLowerCase() !== connectionStatus.label.toLowerCase();
 
   const connectButtonLabel =
     badgeState === 'connected'
@@ -265,60 +269,58 @@ export function ConnectionPanel(): JSX.Element {
         </div>
 
         {/* Status box */}
-        <div className="space-y-2.5 rounded-lg border border-border/30 bg-muted/[0.06] p-3">
-          {/* Status row */}
-          <div className="flex items-center gap-2.5">
-            <div className={cn(
-              'h-2 w-2 shrink-0 rounded-full',
-              statusDotClass[badgeState] ?? 'bg-muted-foreground'
-            )} />
-            <span className="text-sm font-medium text-foreground">{connectionStatus.label}</span>
-          </div>
-
-          {/* Note */}
-          <p className={cn('text-xs', noteToneClass)}>{statusMessage}</p>
-
-          {/* Disconnected reason pill */}
-          {disconnectedReason ? (
-            <div className={cn(
-              'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium',
-              disconnectedReason.toneClass
-            )}>
-              {disconnectedReason.label}
+        <div className="rounded-lg border border-border/40 bg-background/45 p-3">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0 space-y-1">
+              <div className="flex min-w-0 items-center gap-2.5">
+                <div className={cn(
+                  'h-2 w-2 shrink-0 rounded-full',
+                  statusDotClass[badgeState] ?? 'bg-muted-foreground'
+                )} />
+                <span className="truncate text-sm font-semibold text-foreground">{connectionStatus.label}</span>
+                {disconnectedReason ? (
+                  <span className={cn(
+                    'inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[10px] font-medium',
+                    disconnectedReason.toneClass
+                  )}>
+                    {disconnectedReason.label}
+                  </span>
+                ) : null}
+              </div>
+              {showStatusNote ? (
+                <p className={cn('line-clamp-1 text-[11px] text-muted-foreground', noteToneClass)}>{statusMessage}</p>
+              ) : null}
             </div>
-          ) : null}
-
-          {/* Timestamps */}
-          <div className="grid grid-cols-1 gap-1 text-[11px] text-muted-foreground sm:grid-cols-2">
-            <span>
-              <span className="text-muted-foreground/60">Kiểm tra gần nhất:</span>{' '}
-              <span className="tabular-nums">{formatTimestamp(lastCheckedAt)}</span>
-            </span>
-            <span>
-              <span className="text-muted-foreground/60">Thành công cuối:</span>{' '}
-              <span className="tabular-nums">{formatTimestamp(lastSuccessfulCheckedAt)}</span>
-            </span>
+            {shouldShowStatusBanner && badgeState !== 'checking' ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 shrink-0 gap-1.5 px-3 text-xs"
+                onClick={runSaveAndTest}
+                disabled={busy}
+              >
+                <RefreshCcw className="h-3 w-3" />
+                Thử lại
+              </Button>
+            ) : null}
           </div>
 
-          {/* Last error */}
+          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border/35 pt-2 text-[11px] text-muted-foreground/85">
+            <p>
+              <span className="text-muted-foreground/70">Kiểm tra gần nhất:</span>{' '}
+              <span className="tabular-nums text-foreground/85">{formatTimestamp(lastCheckedAt)}</span>
+            </p>
+            <p>
+              <span className="text-muted-foreground/70">Thành công cuối:</span>{' '}
+              <span className="tabular-nums text-foreground/85">{formatTimestamp(lastSuccessfulCheckedAt)}</span>
+            </p>
+          </div>
+
           {lastErrorMessage ? (
-            <p className="text-[11px] text-destructive">{lastErrorMessage}</p>
+            <p className="mt-2 line-clamp-2 text-[11px] text-destructive">{lastErrorMessage}</p>
           ) : null}
 
-          {/* Retry button */}
-          {shouldShowStatusBanner && badgeState !== 'checking' ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-7 gap-1.5 px-3 text-xs"
-              onClick={runSaveAndTest}
-              disabled={busy}
-            >
-              <RefreshCcw className="h-3 w-3" />
-              Thử lại
-            </Button>
-          ) : null}
         </div>
       </CardContent>
     </Card>
