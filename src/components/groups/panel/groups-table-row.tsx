@@ -173,12 +173,12 @@ export function GroupsTableRow({
           type="button"
           onClick={() => onToggleListMembership(group.chatId)}
           title={listActionTitle}
-          className={`inline-flex ${actionButtonTextClass} items-center rounded-full border font-semibold transition-all ${
+          className={`inline-flex ${actionButtonTextClass} items-center rounded-full border font-medium transition-all ${
             !whitelistMode && listPolicy.listed
-              ? 'border-warning/45 bg-warning/12 text-warning shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] hover:border-warning/55 hover:bg-warning/18'
+              ? 'border-warning/35 bg-warning/[0.07] text-warning/85 hover:border-warning/50 hover:bg-warning/[0.12]'
               : listPolicy.listed
-                ? 'border-primary/40 bg-primary/10 text-primary shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] hover:border-primary/55 hover:bg-primary/16'
-                : 'border-border/40 bg-background/40 text-foreground/55 hover:-translate-y-[0.5px] hover:border-warning/40 hover:bg-warning/10 hover:text-warning/80'
+                ? 'border-primary/35 bg-primary/[0.08] text-primary hover:border-primary/50 hover:bg-primary/[0.14]'
+                : 'border-border/50 bg-background/35 text-foreground/70 hover:-translate-y-[0.5px] hover:border-border/65 hover:text-foreground/90'
           }`}
         >
           {listPolicy.listed ? (

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Eye, ImageIcon, MessageCircle, RefreshCw, Users } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
@@ -37,6 +37,7 @@ interface PreviewPanelProps {
 export function PreviewPanel({ mode = 'standalone' }: PreviewPanelProps): JSX.Element {
   const composer = useComposerStore();
   const { groups, selectedIds } = useGroupsStore();
+  const isFirstPreviewLoadRef = useRef(true);
   const [isLoadingPreview, setIsLoadingPreview] = useState(() => Boolean(composer.imagePath));
   const [imageLoadFailed, setImageLoadFailed] = useState(false);
   const [imageLoadError, setImageLoadError] = useState<string | null>(null);
@@ -71,6 +72,7 @@ export function PreviewPanel({ mode = 'standalone' }: PreviewPanelProps): JSX.El
       setIsLoadingPreview(true);
       try {
         const bytes = await readImageBytes(composer.imagePath);
+        isFirstPreviewLoadRef.current = false;
         const mime = inferImageMimeType(composer.imagePath);
         const objectUrl = URL.createObjectURL(new Blob([toArrayBuffer(bytes)], { type: mime }));
         revokedUrl = objectUrl;
@@ -80,18 +82,22 @@ export function PreviewPanel({ mode = 'standalone' }: PreviewPanelProps): JSX.El
         setImageLoadError(null);
         setIsLoadingPreview(false);
       } catch (error) {
-        if (active) {
-          const msg = error instanceof Error ? error.message : String(error ?? '');
-          const isPermission = msg.toLowerCase().includes('forbidden') || msg.toLowerCase().includes('scope');
-          setPreviewImageSrc('');
-          setImageLoadFailed(true);
-          setIsLoadingPreview(false);
-          setImageLoadError(
-            isPermission
-              ? 'Không thể đọc tệp do giới hạn quyền thư mục. Khởi động lại app hoặc chọn ảnh ở thư mục khác.'
-              : 'Không thể đọc tệp ảnh. Hãy kiểm tra file còn tồn tại và quyền truy cập.'
-          );
+        if (!active) return;
+        if (isFirstPreviewLoadRef.current) {
+          isFirstPreviewLoadRef.current = false;
+          composer.setImage(undefined);
+          return;
         }
+        const msg = error instanceof Error ? error.message : String(error ?? '');
+        const isPermission = msg.toLowerCase().includes('forbidden') || msg.toLowerCase().includes('scope');
+        setPreviewImageSrc('');
+        setImageLoadFailed(true);
+        setIsLoadingPreview(false);
+        setImageLoadError(
+          isPermission
+            ? 'Không thể đọc tệp do giới hạn quyền thư mục. Khởi động lại app hoặc chọn ảnh ở thư mục khác.'
+            : 'Không thể đọc tệp ảnh. Hãy kiểm tra file còn tồn tại và quyền truy cập.'
+        );
       }
     };
 

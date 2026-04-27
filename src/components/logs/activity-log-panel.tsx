@@ -80,18 +80,18 @@ const levelIcon: Record<string, JSX.Element> = {
   error: <AlertCircle className="h-3.5 w-3.5" />
 };
 
-const levelItemTone: Record<string, string> = {
-  info: 'border-border/40 bg-background/75',
-  success: 'border-border/40 bg-background/75',
-  warn: 'border-border/40 bg-background/75',
-  error: 'border-border/40 bg-background/75'
+const levelBorderTone: Record<string, string> = {
+  info: 'bg-primary/40',
+  success: 'bg-success/55',
+  warn: 'bg-warning/65',
+  error: 'bg-destructive/65'
 };
 
-const levelBorderTone: Record<string, string> = {
-  info: 'bg-primary/35',
-  success: 'bg-success/55',
-  warn: 'bg-warning/60',
-  error: 'bg-destructive/60'
+const levelIconTone: Record<string, string> = {
+  info: 'text-primary/60',
+  success: 'text-success/65',
+  warn: 'text-warning/70',
+  error: 'text-destructive/70'
 };
 
 interface ActivityLogPanelProps {
@@ -417,41 +417,40 @@ export function ActivityLogPanel({ onRequestClose, className, compact = false }:
   }, [filter, sortOrder, deferredSearchTerm]);
 
   const renderLogItem = (log: CampaignLog | UiActivityLog): JSX.Element => (
-    <article
-      className={cn(
-        'group relative overflow-hidden rounded-md border px-3 py-2.5 text-[13px] transition-colors',
-        levelItemTone[log.level] ?? levelItemTone.info
-      )}
-    >
+    <article className="relative flex min-w-0 items-start gap-2 border-b border-border/20 py-2 pl-3 pr-2.5 last:border-b-0">
       <span
-        className={cn(
-          'absolute inset-y-0 left-0 w-[2px]',
-          levelBorderTone[log.level] ?? levelBorderTone.info
-        )}
+        className={cn('absolute inset-y-0 left-0 w-[2px]', levelBorderTone[log.level] ?? levelBorderTone.info)}
         aria-hidden
       />
-
-      <div className="mb-1.5 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <span className="text-muted-foreground/80">{levelIcon[log.level] ?? levelIcon.info}</span>
-          {filter === 'all' ? (
-            <Badge variant={levelVariant[log.level] ?? 'secondary'} className="h-5 rounded-full px-2 text-[10px] font-semibold">
-              {levelLabel[log.level] ?? log.level}
-            </Badge>
-          ) : null}
-          {'count' in log && typeof log.count === 'number' && log.count > 1 ? (
-            <Badge variant="outline" className="h-5 rounded-full px-1.5 text-[10px]">
-              x{log.count}
-            </Badge>
-          ) : null}
+      <span className={cn('mt-[1px] shrink-0', levelIconTone[log.level] ?? levelIconTone.info)}>
+        {levelIcon[log.level] ?? levelIcon.info}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-start justify-between gap-2">
+          <p className={cn('text-[12.5px] leading-[1.4] text-foreground/88', compact && 'truncate')}>
+            {filter === 'all' ? (
+              <span className={cn(
+                'mr-1.5 inline-flex items-center rounded-full border px-1.5 py-px align-middle text-[9px] font-semibold leading-none',
+                log.level === 'success' ? 'border-success/28 bg-success/[0.09] text-success' :
+                log.level === 'warn'    ? 'border-warning/28 bg-warning/[0.08] text-warning/85' :
+                log.level === 'error'   ? 'border-destructive/25 bg-destructive/[0.07] text-destructive/80' :
+                                          'border-border/35 bg-muted/[0.10] text-muted-foreground/70'
+              )}>
+                {levelLabel[log.level] ?? log.level}
+              </span>
+            ) : null}
+            {localizeLogMessage(log.message)}
+            {'count' in log && typeof log.count === 'number' && log.count > 1 ? (
+              <span className="ml-1.5 inline-flex items-center rounded-full border border-border/30 bg-muted/20 px-1.5 py-px align-middle text-[9px] text-muted-foreground/65">
+                ×{log.count}
+              </span>
+            ) : null}
+          </p>
+          <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/50">
+            {dayjs(log.createdAt).format('HH:mm:ss')}
+          </span>
         </div>
-        <span className="shrink-0 text-[11px] font-medium tabular-nums text-muted-foreground/85">
-          {dayjs(log.createdAt).format('HH:mm:ss')}
-        </span>
       </div>
-      <p className={cn('pr-1 leading-[1.35rem] text-foreground/92', compact && 'truncate')}>
-        {localizeLogMessage(log.message)}
-      </p>
     </article>
   );
 
@@ -470,7 +469,7 @@ export function ActivityLogPanel({ onRequestClose, className, compact = false }:
               <span className="text-[10px] tabular-nums text-muted-foreground">
                 {mergedLogs.length} mục
               </span>
-              <span className="text-border/60">·</span>
+              <span className="text-muted-foreground/35">·</span>
               <span className="text-[10px] tabular-nums text-muted-foreground">
                 Hiển thị {displayedLogs.length}
                 {hiddenLogCount > 0 ? ` / ${filteredLogs.length}` : ''}
@@ -671,7 +670,7 @@ export function ActivityLogPanel({ onRequestClose, className, compact = false }:
             <span>{hiddenLogCount > 0 ? `+${hiddenLogCount} ẩn` : sortOrder === 'newest' ? 'Mới trước' : 'Cũ trước'}</span>
           </div>
 
-          <div ref={logViewportRef} className="flex-1 overflow-auto p-2">
+          <div ref={logViewportRef} className="flex-1 overflow-auto">
             {displayedLogs.length === 0 ? (
               <div className="flex h-full items-center justify-center text-sm text-foreground/62">
                 {hasLogs ? 'Không có log phù hợp bộ lọc hiện tại.' : 'Chưa có log nào.'}
@@ -680,16 +679,13 @@ export function ActivityLogPanel({ onRequestClose, className, compact = false }:
               <div className="relative w-full" style={{ height: `${rowVirtualizer.getTotalSize()}px` }}>
                 {virtualItems.map((item) => {
                   const log = displayedLogs[item.index];
-                  if (!log) {
-                    return null;
-                  }
-
+                  if (!log) return null;
                   return (
                     <div
                       key={log.id}
                       data-index={item.index}
                       ref={rowVirtualizer.measureElement}
-                      className="absolute left-0 top-0 w-full pb-2"
+                      className="absolute left-0 top-0 w-full"
                       style={{ transform: `translateY(${item.start}px)` }}
                     >
                       {renderLogItem(log)}
@@ -698,11 +694,7 @@ export function ActivityLogPanel({ onRequestClose, className, compact = false }:
                 })}
               </div>
             ) : (
-              <div className="space-y-1.5">
-                {displayedLogs.map((log) => (
-                  <div key={log.id}>{renderLogItem(log)}</div>
-                ))}
-              </div>
+              <div>{displayedLogs.map((log) => <div key={log.id}>{renderLogItem(log)}</div>)}</div>
             )}
           </div>
         </div>

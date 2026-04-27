@@ -60,6 +60,7 @@ export function useComposerDraft({
   };
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const isFirstImageLoadRef = useRef(true);
   const [mediaMeta, setMediaMeta] = useState<MediaMeta | null>(null);
   const [mediaPreviewSrc, setMediaPreviewSrc] = useState('');
   const [mediaError, setMediaError] = useState<string | null>(null);
@@ -145,6 +146,7 @@ export function useComposerDraft({
 
       try {
         const bytes = await readImageBytes(composer.imagePath);
+        isFirstImageLoadRef.current = false;
         const mime = inferImageMimeType(composer.imagePath);
         const blob = new Blob([toArrayBuffer(bytes)], { type: mime });
         objectUrl = URL.createObjectURL(blob);
@@ -176,6 +178,11 @@ export function useComposerDraft({
           URL.revokeObjectURL(objectUrl);
         }
         if (!active) {
+          return;
+        }
+        if (isFirstImageLoadRef.current) {
+          isFirstImageLoadRef.current = false;
+          composer.setImage(undefined);
           return;
         }
         const errorMessage = error instanceof Error ? error.message : String(error ?? '');
