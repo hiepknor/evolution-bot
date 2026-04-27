@@ -57,6 +57,22 @@ const filterShortLabel: Record<LogFilter, string> = {
   error: 'Lỗi'
 };
 
+const filterChipClass: Record<LogFilter, string> = {
+  all:     'border-primary/35 bg-primary/[0.08] text-primary',
+  info:    'border-primary/30 bg-primary/[0.07] text-primary/85',
+  success: 'border-success/35 bg-success/[0.08] text-success',
+  warn:    'border-warning/35 bg-warning/[0.08] text-warning',
+  error:   'border-destructive/30 bg-destructive/[0.07] text-destructive/85',
+};
+
+const filterCountClass: Record<LogFilter, string> = {
+  all:     'bg-primary/15 text-primary',
+  info:    'bg-primary/12 text-primary/80',
+  success: 'bg-success/15 text-success',
+  warn:    'bg-warning/15 text-warning',
+  error:   'bg-destructive/12 text-destructive/80',
+};
+
 const levelIcon: Record<string, JSX.Element> = {
   info: <Info className="h-3.5 w-3.5" />,
   success: <CheckCircle2 className="h-3.5 w-3.5" />,
@@ -593,57 +609,53 @@ export function ActivityLogPanel({ onRequestClose, className, compact = false }:
             ) : null}
           </div>
 
-          <div className="flex items-stretch gap-2">
+          <div className="flex items-start gap-2">
             <div
-              className="min-w-0 flex-1 overflow-x-auto rounded-lg border border-border/35 bg-background p-1"
+              className="flex min-w-0 flex-1 flex-wrap gap-1"
               role="tablist"
               aria-label="Bộ lọc mức log"
             >
-              <div className="flex min-w-max items-center gap-1">
-                {(Object.keys(filterLabel) as LogFilter[]).map((key) => (
+              {(Object.keys(filterLabel) as LogFilter[]).map((key) => {
+                const isActive = filter === key;
+                return (
                   <button
                     key={key}
                     type="button"
                     role="tab"
-                    aria-selected={filter === key}
+                    aria-selected={isActive}
                     className={cn(
-                      panelTokens.control,
-                      'inline-flex h-8 min-w-[90px] shrink-0 items-center justify-center gap-1 rounded-md px-2.5 text-[11px] font-medium tabular-nums transition-all',
-                      filter === key
-                        ? 'bg-card text-foreground ring-1 ring-border/45 shadow-sm'
-                        : 'text-foreground/68 hover:text-foreground'
+                      'inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-medium transition-all',
+                      isActive
+                        ? filterChipClass[key]
+                        : 'border-border/28 bg-background/25 text-muted-foreground/55 hover:border-border/45 hover:text-foreground/80'
                     )}
                     onClick={() => setFilter(key)}
                   >
-                    <span className="sm:hidden">{filterShortLabel[key]}</span>
-                    <span className="hidden sm:inline">{filterLabel[key]}</span>
-                    <span
-                      className={cn(
-                        'rounded-full px-1.5 py-0.5 text-[10px] leading-none',
-                        filter === key ? 'bg-primary/15 text-primary' : 'bg-muted/40 text-muted-foreground'
-                      )}
-                    >
-                      {filterCounts[key]}
-                    </span>
+                    {filterLabel[key]}
+                    {filterCounts[key] > 0 && (
+                      <span className={cn(
+                        'rounded-full px-1.5 py-px text-[10px] tabular-nums font-semibold',
+                        isActive ? filterCountClass[key] : 'bg-muted/30 text-muted-foreground/50'
+                      )}>
+                        {filterCounts[key]}
+                      </span>
+                    )}
                   </button>
-                ))}
-              </div>
+                );
+              })}
             </div>
-            <Button
+            <button
               type="button"
-              size="sm"
-              variant="outline"
-              className={cn(
-                'shrink-0 border-border/35 bg-background px-3 text-[11px] font-medium text-foreground/80 hover:text-foreground',
-                '!h-10 min-w-[112px] rounded-lg',
-                panelTokens.control
-              )}
               onClick={() => setSortOrder((prev) => (prev === 'newest' ? 'oldest' : 'newest'))}
               title={sortOrder === 'newest' ? 'Đang sắp xếp mới nhất trước' : 'Đang sắp xếp cũ nhất trước'}
+              className={cn(
+                'inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-medium transition-all',
+                'border-border/28 bg-background/25 text-muted-foreground/55 hover:border-border/45 hover:text-foreground/80'
+              )}
             >
-              <ArrowDownUp className="mr-1 h-3.5 w-3.5" />
+              <ArrowDownUp className="h-3 w-3" />
               {sortOrder === 'newest' ? 'Mới nhất' : 'Cũ nhất'}
-            </Button>
+            </button>
           </div>
         </div>
 

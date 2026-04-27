@@ -8,7 +8,7 @@ import { useGroupsStore } from '@/stores/use-groups-store';
 import { useSettingsStore } from '@/stores/use-settings-store';
 
 const connectionRequiredMessage =
-  'Chưa kết nối instance. Mở cài đặt kết nối (icon bánh răng) và bấm "Kết nối".';
+  'Chưa kết nối instance. Mở cài đặt kết nối và bấm "Kết nối".';
 const groupsIgnoreRequiredMessage =
   'Instance đang bật groups_ignore=true. Tắt cờ này trong Evolution API trước khi tải danh sách nhóm.';
 

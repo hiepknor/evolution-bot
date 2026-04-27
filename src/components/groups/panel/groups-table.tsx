@@ -72,13 +72,12 @@ export function GroupsTable({
     <table className={`relative z-0 w-full table-fixed border-separate border-spacing-0 transition-[font-size,line-height] duration-200 ease-out ${density === 'compact' ? 'text-[12px] leading-4' : 'text-[13px] leading-[1.25rem]'}`}>
       <colgroup>
         <col className="w-[3%]" />
-        <col className="w-[26%]" />
+        <col className="w-[28%]" />
         <col className="w-[7%]" />
-        <col className="w-[21%]" />
-        <col className="w-[4%]" />
+        <col className="w-[24%]" />
         <col className="w-[13%]" />
         <col className="w-[12%]" />
-        <col className="w-[14%]" />
+        <col className="w-[13%]" />
       </colgroup>
       <thead>
         <tr>
@@ -108,7 +107,6 @@ export function GroupsTable({
               Chat ID
             </span>
           </th>
-          <th className={`${stickyHeaderCellClass} ${headerTextClass} whitespace-nowrap text-center`} />
           <th className={`${stickyHeaderCellClass} ${headerTextClass} whitespace-nowrap text-left`}>
             <span className="inline-flex items-center gap-1">
               <Shield className="h-3 w-3 opacity-70" />
@@ -134,7 +132,7 @@ export function GroupsTable({
           <>
             {topPadding > 0 ? (
               <tr aria-hidden="true">
-                <td colSpan={8} style={{ height: `${topPadding}px` }} />
+                <td colSpan={7} style={{ height: `${topPadding}px` }} />
               </tr>
             ) : null}
             {visibleRows.map(({ group, key }) => {
@@ -165,13 +163,13 @@ export function GroupsTable({
             })}
             {bottomPadding > 0 ? (
               <tr aria-hidden="true">
-                <td colSpan={8} style={{ height: `${bottomPadding}px` }} />
+                <td colSpan={7} style={{ height: `${bottomPadding}px` }} />
               </tr>
             ) : null}
           </>
         ) : (
           <tr className="border-t border-border/70">
-            <td colSpan={8} className="p-3 text-center text-sm text-muted-foreground">
+            <td colSpan={7} className="p-3 text-center text-sm text-muted-foreground">
               Không có nhóm khớp bộ lọc hiện tại. Hãy nới từ khóa tìm kiếm hoặc số thành viên.
             </td>
           </tr>

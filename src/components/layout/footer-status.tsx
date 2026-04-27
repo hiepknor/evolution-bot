@@ -35,6 +35,35 @@ const formatCampaignDuration = (startedAt?: string, finishedAt?: string): string
   return formatRemainingTime(Math.max(0, end.diff(start)));
 };
 
+function StatDivider() {
+  return <span className="h-4 w-px shrink-0 bg-border/60" />;
+}
+
+function StatItem({
+  icon,
+  label,
+  value,
+  valueClass,
+  sub
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string | React.ReactNode;
+  valueClass?: string;
+  sub?: string;
+}) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className="shrink-0 text-muted-foreground/45">{icon}</span>
+      <span className="text-[10px] text-muted-foreground/50">{label}</span>
+      <span className={cn('text-[11px] font-semibold tabular-nums text-foreground', valueClass)}>
+        {value}
+      </span>
+      {sub ? <span className="text-[10px] tabular-nums text-muted-foreground/45">{sub}</span> : null}
+    </div>
+  );
+}
+
 export function FooterStatus(): JSX.Element {
   const activeCampaign = useCampaignStore((state) => state.activeCampaign);
   const progress = useCampaignStore((state) => state.queueProgress);
@@ -122,7 +151,7 @@ export function FooterStatus(): JSX.Element {
 
   const etaDisplay = liveMode
     ? paused
-      ? `Tạm dừng (${formatRemainingTime(liveEtaMs)})`
+      ? `Tạm dừng · ${formatRemainingTime(liveEtaMs)}`
       : stopping
         ? 'Đang dừng...'
         : liveEtaMs <= 5000 && processed < total
@@ -140,24 +169,30 @@ export function FooterStatus(): JSX.Element {
     : '-';
 
   const hasError = failedCount > 0;
+  const finishedTime = finishedMode && activeCampaign?.finishedAt
+    ? dayjs(activeCampaign.finishedAt).format('HH:mm:ss')
+    : null;
+  const startedTime = !finishedMode && activeCampaign?.startedAt
+    ? dayjs(activeCampaign.startedAt).format('HH:mm:ss')
+    : null;
 
   return (
-    <footer className="border-t border-border/70 bg-card/70 px-4 py-2.5 backdrop-blur">
+    <footer className="border-t border-border/60 bg-card/80 px-4 py-2 backdrop-blur">
       {/* Progress row */}
-      <div className="mb-2 flex items-center gap-3">
+      <div className="mb-1.5 flex items-center gap-2.5">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           {total > 0 ? (
-            <span className="w-9 shrink-0 text-right text-xs font-semibold tabular-nums text-foreground/80">
+            <span className="w-8 shrink-0 text-right text-[11px] font-semibold tabular-nums text-foreground/70">
               {roundedPercent}%
             </span>
           ) : null}
-          <Progress value={percent} className="h-1 flex-1" />
+          <Progress value={percent} className="h-[3px] flex-1" />
           {total > 0 ? (
-            <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
-              {processed}<span className="text-muted-foreground/50">/{total}</span>
+            <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/60">
+              {processed}<span className="text-muted-foreground/40">/{total}</span>
             </span>
           ) : (
-            <span className="text-[11px] text-muted-foreground/60">Chưa có chiến dịch</span>
+            <span className="text-[10px] text-muted-foreground/45">Chưa có chiến dịch</span>
           )}
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -166,88 +201,61 @@ export function FooterStatus(): JSX.Element {
           ) : null}
           <Badge
             variant={campaignStatusVariant}
-            className="h-5 min-w-[72px] justify-center rounded-full px-2 text-[10px] font-semibold"
+            className="min-w-[68px] justify-center rounded-full px-2.5 py-0.5 text-[10px] font-semibold"
           >
             {campaignStatusLabel}
           </Badge>
         </div>
       </div>
 
-      {/* Stats row — 4 separate cards */}
-      <div className="grid grid-cols-4 gap-2">
+      {/* Stats row — compact inline */}
+      <div className="flex items-center gap-3.5 overflow-hidden">
         {/* Đã gửi */}
-        <div className="flex items-center gap-3 rounded-lg border border-border/35 bg-background/30 px-3 py-2">
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-success/10 text-success">
-            <Send className="h-3.5 w-3.5" />
-          </div>
-          <div className="min-w-0">
-            <p className="text-[9px] uppercase tracking-wider text-muted-foreground/60">Đã gửi</p>
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-sm font-bold tabular-nums text-foreground">{sentCount}</span>
-              {dryRunCount > 0 && (
-                <span className="text-[10px] text-muted-foreground/55">{dryRunCount} thử</span>
-              )}
-            </div>
-          </div>
-        </div>
+        <StatItem
+          icon={<Send className="h-3 w-3" />}
+          label="Đã gửi"
+          value={
+            dryRunCount > 0
+              ? <><span className="text-success">{sentCount}</span><span className="ml-1 text-[9px] font-normal text-muted-foreground/50">{dryRunCount} thử</span></>
+              : sentCount
+          }
+          valueClass={dryRunCount === 0 ? 'text-success' : undefined}
+        />
+
+        <StatDivider />
 
         {/* Lỗi / bỏ qua */}
-        <div className={cn(
-          'flex items-center gap-3 rounded-lg border px-3 py-2',
-          hasError
-            ? 'border-destructive/25 bg-destructive/[0.06]'
-            : 'border-border/35 bg-background/30'
-        )}>
-          <div className={cn(
-            'flex h-7 w-7 shrink-0 items-center justify-center rounded-md',
-            hasError ? 'bg-destructive/10 text-destructive' : 'bg-muted/25 text-muted-foreground/40'
-          )}>
-            <AlertCircle className="h-3.5 w-3.5" />
-          </div>
-          <div className="min-w-0">
-            <p className="text-[9px] uppercase tracking-wider text-muted-foreground/60">Lỗi / bỏ qua</p>
-            <div className="flex items-baseline gap-1">
-              <span className={cn(
-                'text-sm font-bold tabular-nums',
-                hasError ? 'text-destructive' : 'text-foreground'
-              )}>{failedCount}</span>
-              <span className="text-[10px] text-muted-foreground/45">/ {skippedCount}</span>
-            </div>
-          </div>
-        </div>
+        <StatItem
+          icon={<AlertCircle className="h-3 w-3" />}
+          label="Lỗi"
+          value={failedCount}
+          valueClass={hasError ? 'text-destructive' : undefined}
+          sub={skippedCount > 0 ? `· ${skippedCount} bỏ qua` : undefined}
+        />
+
+        <StatDivider />
 
         {/* Thời gian */}
-        <div className="flex items-center gap-3 rounded-lg border border-border/35 bg-background/30 px-3 py-2">
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
-            <Clock className="h-3.5 w-3.5" />
-          </div>
-          <div className="min-w-0">
-            <p className="text-[9px] uppercase tracking-wider text-muted-foreground/60">
-              {finishedMode ? 'Thời lượng' : 'Còn lại'}
-            </p>
-            <p className="text-sm font-bold tabular-nums text-foreground">
-              {finishedMode ? durationDisplay : etaDisplay}
-            </p>
-          </div>
-        </div>
+        <StatItem
+          icon={<Clock className="h-3 w-3" />}
+          label={finishedMode ? 'Thời lượng' : 'Còn lại'}
+          value={finishedMode ? durationDisplay : etaDisplay}
+        />
+
+        <StatDivider />
 
         {/* Chiến dịch */}
         <div
-          className="flex items-center gap-3 rounded-lg border border-border/35 bg-background/30 px-3 py-2"
+          className="flex min-w-0 flex-1 items-center gap-1.5"
           title={campaignTitle}
         >
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-accent/35 text-accent-foreground">
-            <Tag className="h-3.5 w-3.5" />
-          </div>
-          <div className="min-w-0">
-            <p className="text-[9px] uppercase tracking-wider text-muted-foreground/60">Chiến dịch</p>
-            <p className="truncate text-sm font-bold text-foreground">{campaignDisplay}</p>
-            <p className="text-[9px] tabular-nums text-muted-foreground/55">
-              {finishedMode
-                ? `Xong ${activeCampaign?.finishedAt ? dayjs(activeCampaign.finishedAt).format('HH:mm:ss') : '-'}`
-                : `Từ ${activeCampaign?.startedAt ? dayjs(activeCampaign.startedAt).format('HH:mm:ss') : '-'}`}
-            </p>
-          </div>
+          <Tag className="h-3 w-3 shrink-0 text-muted-foreground/45" />
+          <span className="truncate text-[11px] font-semibold text-foreground">{campaignDisplay}</span>
+          {(finishedTime ?? startedTime) ? (
+            <span className="shrink-0 text-[9px] tabular-nums text-muted-foreground/40">
+              {finishedTime ? `· xong ${finishedTime}` : `· từ ${startedTime ?? ''}`}
+            </span>
+          ) : null}
         </div>
       </div>
     </footer>

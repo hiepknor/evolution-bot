@@ -81,16 +81,16 @@ export function GroupsTableRow({
   const permissionBadgeClass = permissionMeta.variant === 'success'
     ? 'border border-success/28 bg-success/[0.09] text-success'
     : permissionMeta.variant === 'destructive'
-      ? 'border border-destructive/28 bg-destructive/[0.1] text-destructive'
-      : 'border border-warning/28 bg-warning/[0.1] text-warning';
+      ? 'border border-destructive/22 bg-destructive/[0.06] text-destructive/72'
+      : 'border border-warning/28 bg-warning/[0.08] text-warning/80';
 
   const statusBadgeClass = statusMeta.variant === 'success'
     ? 'border border-success/28 bg-success/[0.09] text-success'
     : statusMeta.variant === 'destructive'
-      ? 'border border-destructive/28 bg-destructive/[0.1] text-destructive'
+      ? 'border border-destructive/22 bg-destructive/[0.06] text-destructive/72'
       : statusMeta.variant === 'warning'
-        ? 'border border-warning/28 bg-warning/[0.1] text-warning'
-        : 'border border-slate-400/32 bg-slate-500/[0.14] text-slate-100';
+        ? 'border border-warning/28 bg-warning/[0.08] text-warning/80'
+        : 'border border-border/45 bg-muted/[0.10] text-muted-foreground/75';
 
   return (
     <tr
@@ -129,27 +129,25 @@ export function GroupsTableRow({
         {group.membersCount}
       </td>
 
-      {/* Chat ID */}
+      {/* Chat ID + copy button */}
       <td className={`${cellClass} transition-[padding] duration-200 ease-out`}>
-        <span className={`block min-w-0 truncate font-mono ${monoTextClass} text-foreground/88 transition-[font-size,line-height,color] duration-200 ease-out group-hover:text-foreground`} title={group.chatId}>
-          {formatChatId(group.chatId)}
-        </span>
-      </td>
-
-      {/* Copy button */}
-      <td className={`${centerCellClass} transition-[padding] duration-200 ease-out`}>
-        <button
-          type="button"
-          onClick={() => void onCopyChatId(group.chatId)}
-          title="Sao chép chat id"
-          className={`inline-flex ${isCompact ? 'h-[18px] w-[18px]' : 'h-[22px] w-[22px]'} items-center justify-center rounded-md transition-colors ${
-            isCopied
-              ? 'text-success'
-              : 'text-muted-foreground/50 hover:bg-muted hover:text-muted-foreground'
-          }`}
-        >
-          {isCopied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3 w-3" />}
-        </button>
+        <div className="flex min-w-0 items-center gap-1.5">
+          <span className={`block min-w-0 flex-1 truncate font-mono ${monoTextClass} text-foreground/80 transition-[font-size,line-height,color] duration-200 ease-out group-hover:text-foreground/95`} title={group.chatId}>
+            {formatChatId(group.chatId)}
+          </span>
+          <button
+            type="button"
+            onClick={() => void onCopyChatId(group.chatId)}
+            title="Sao chép chat id"
+            className={`shrink-0 inline-flex ${isCompact ? 'h-4 w-4' : 'h-[18px] w-[18px]'} items-center justify-center rounded transition-colors ${
+              isCopied
+                ? 'text-success'
+                : 'text-muted-foreground/30 hover:bg-muted/60 hover:text-muted-foreground/70'
+            }`}
+          >
+            {isCopied ? <Check className="h-2.5 w-2.5" /> : <Copy className="h-2.5 w-2.5" />}
+          </button>
+        </div>
       </td>
 
       {/* Permission badge */}
@@ -180,7 +178,7 @@ export function GroupsTableRow({
               ? 'border-warning/45 bg-warning/12 text-warning shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] hover:border-warning/55 hover:bg-warning/18'
               : listPolicy.listed
                 ? 'border-primary/40 bg-primary/10 text-primary shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] hover:border-primary/55 hover:bg-primary/16'
-                : 'border-border/60 bg-background/65 text-foreground/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] hover:-translate-y-[0.5px] hover:border-warning/45 hover:bg-warning/12 hover:text-warning'
+                : 'border-border/40 bg-background/40 text-foreground/55 hover:-translate-y-[0.5px] hover:border-warning/40 hover:bg-warning/10 hover:text-warning/80'
           }`}
         >
           {listPolicy.listed ? (

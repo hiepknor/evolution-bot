@@ -1,6 +1,7 @@
 import { CheckCircle2 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
+import { panelTokens } from '@/components/layout/panel-tokens';
 
 interface OperationsReadinessProps {
   readiness: Array<{
@@ -26,7 +27,7 @@ export function OperationsReadiness({
   const allReady = canSend || running;
 
   return (
-    <div className="space-y-2.5">
+    <div className={panelTokens.section}>
       <div className="flex items-center gap-2.5">
         <div
           className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${

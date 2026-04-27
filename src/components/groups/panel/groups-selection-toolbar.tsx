@@ -38,7 +38,7 @@ export function GroupsSelectionToolbar({
         {blockedVisibleCount > 0 ? (
           <Badge
             variant="warning"
-            className="h-5 rounded-full px-2 text-[10px]"
+            className="h-6 rounded-full px-2.5 text-[11px]"
             title={blockedSelectionDetail}
           >
             {blockedSelectionLabel}
@@ -56,7 +56,7 @@ export function GroupsSelectionToolbar({
         >
           Chọn tất cả
         </Button>
-        <span className="select-none text-border/60">·</span>
+        <span className="select-none text-muted-foreground/35">·</span>
         <Button
           size="sm"
           variant="ghost"
@@ -66,7 +66,7 @@ export function GroupsSelectionToolbar({
         >
           Bỏ chọn
         </Button>
-        <span className="select-none text-border/60">·</span>
+        <span className="select-none text-muted-foreground/35">·</span>
         <Button
           size="sm"
           variant="ghost"

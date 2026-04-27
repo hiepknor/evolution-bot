@@ -67,7 +67,7 @@ export function ComposerImagePicker({
         className={`space-y-2.5 rounded-lg border p-3 transition-colors ${
           isMediaDropActive
             ? 'border-primary/55 bg-primary/[0.06]'
-            : 'border-border/35 bg-muted/[0.06]'
+            : 'border-border/30 bg-muted/[0.08]'
         }`}
         onDragOver={(event) => {
           event.preventDefault();
@@ -159,13 +159,13 @@ export function ComposerImagePicker({
             </SelectContent>
           </Select>
           {brokenRecentFiles.length > 0 ? (
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-warning/35 bg-warning/[0.08] px-3 py-2 text-sm text-warning">
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-warning/30 bg-warning/[0.07] px-3 py-2 text-sm text-warning">
               <span>{brokenRecentFiles.length} tệp không còn truy cập được.</span>
               <Button
                 type="button"
                 size="sm"
                 variant="outline"
-                className={`${panelTokens.control} border-warning/40 px-3 text-warning hover:bg-warning/15`}
+                className="h-7 rounded-md border-warning/40 px-2.5 text-xs text-warning hover:bg-warning/15"
                 onClick={() => removeRecentFiles(brokenRecentFiles)}
               >
                 Gỡ tệp lỗi
@@ -188,7 +188,7 @@ export function ComposerImagePicker({
 
         {/* Media meta */}
         {mediaMeta ? (
-          <div className="flex items-center gap-3 rounded-lg border border-border/30 bg-background/30 px-3 py-2">
+          <div className="flex items-center gap-3 rounded-lg border border-border/30 bg-muted/[0.08] px-3 py-2">
             <div className="min-w-0 flex-1 space-y-1.5">
               <div className="flex flex-wrap items-center gap-1.5">
                 <Badge variant="outline" className="font-mono text-[10px]">

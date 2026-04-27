@@ -16,7 +16,7 @@ export function ComposerTemplateHelp({
   return (
     <>
       {/* Quick content CTA */}
-      <div className="flex items-center gap-3 rounded-lg border border-border/35 bg-muted/[0.06] px-3 py-2.5">
+      <div className="flex items-center gap-3 rounded-lg border border-border/30 bg-muted/[0.08] px-3 py-2.5">
         <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
           <BookMarked className="h-3.5 w-3.5" />
         </div>
@@ -37,10 +37,10 @@ export function ComposerTemplateHelp({
       </div>
 
       {/* Variable insertion */}
-      <div className="rounded-lg border border-border/35 bg-muted/[0.06] px-3 py-2.5">
+      <div className="rounded-lg border border-border/30 bg-muted/[0.08] px-3 py-2.5">
         <div className="mb-2 flex items-center gap-2">
-          <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-accent/40 text-accent-foreground">
-            <Braces className="h-3 w-3" />
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-accent/40 text-accent-foreground">
+            <Braces className="h-3.5 w-3.5" />
           </div>
           <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Chèn biến</p>
         </div>

@@ -99,7 +99,7 @@ export function GroupsFilterBar(props: GroupsFilterBarProps): JSX.Element {
         </div>
 
         {/* Status segmented control */}
-        <div className={cn(panelTokens.toolbar, 'inline-flex shrink-0 p-1')}>
+        <div className={cn(panelTokens.toolbar, 'inline-flex shrink-0 p-0.5')}>
           {(
             [
               { mode: 'all', label: 'Tất cả', count: filterCounts.status.all },

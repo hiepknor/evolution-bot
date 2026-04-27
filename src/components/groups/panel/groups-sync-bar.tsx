@@ -1,4 +1,4 @@
-import { AlertTriangle, RefreshCw, Shield, Tag, Trash2, Users } from 'lucide-react';
+import { AlertTriangle, RefreshCw, Settings2, Shield, Tag, Trash2, Users } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { panelTokens } from '@/components/layout/panel-tokens';
@@ -109,7 +109,11 @@ export function GroupsSyncBar({
             title={syncButtonTitle}
             aria-label={syncButtonLabel}
           >
-            <RefreshCw className={`h-3.5 w-3.5 shrink-0 ${isSyncLoading ? 'animate-spin' : ''}`} />
+            {isConnectionBlocked ? (
+              <Settings2 className="h-3.5 w-3.5 shrink-0" />
+            ) : (
+              <RefreshCw className={`h-3.5 w-3.5 shrink-0 ${isSyncLoading ? 'animate-spin' : ''}`} />
+            )}
             {syncButtonLabel}
           </Button>
           {hasGroups ? (
@@ -133,9 +137,17 @@ export function GroupsSyncBar({
       </div>
 
       {syncDisabledReason ? (
-        <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/[0.06] px-3 py-2 text-[11px] text-warning">
+        <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/[0.06] px-3 py-2 text-sm text-warning">
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          {syncDisabledReason}
+          {isConnectionBlocked ? (
+            <span>
+              Chưa kết nối instance. Mở cài đặt kết nối{' '}
+              <Settings2 className="inline h-3.5 w-3.5 -translate-y-px opacity-80" />
+              {' '}và bấm &quot;Kết nối&quot;.
+            </span>
+          ) : (
+            syncDisabledReason
+          )}
         </div>
       ) : null}
     </div>

@@ -37,6 +37,22 @@ const filterLabel: Record<HistoryFilter, string> = {
   stopped: 'Đã dừng'
 };
 
+const filterChipClass: Record<HistoryFilter, string> = {
+  all:       'border-primary/35 bg-primary/[0.08] text-primary',
+  running:   'border-warning/35 bg-warning/[0.08] text-warning',
+  completed: 'border-success/35 bg-success/[0.08] text-success',
+  failed:    'border-destructive/30 bg-destructive/[0.07] text-destructive/85',
+  stopped:   'border-border/55 bg-muted/[0.12] text-foreground/75',
+};
+
+const filterCountClass: Record<HistoryFilter, string> = {
+  all:       'bg-primary/15 text-primary',
+  running:   'bg-warning/15 text-warning',
+  completed: 'bg-success/15 text-success',
+  failed:    'bg-destructive/12 text-destructive/80',
+  stopped:   'bg-muted/35 text-muted-foreground/70',
+};
+
 const isCampaignLike = (value: unknown): value is Campaign => {
   if (!value || typeof value !== 'object') return false;
   return typeof (value as Record<string, unknown>).id === 'string';
@@ -47,6 +63,18 @@ const formatDateSafe = (value?: string): string => {
   const parsed = dayjs(value);
   return parsed.isValid() ? parsed.format('YYYY-MM-DD HH:mm') : 'Không rõ thời gian';
 };
+
+const formatDuration = (seconds: number): string => {
+  if (seconds < 60) return `${seconds}s`;
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  if (h > 0) return s > 0 ? `${h}h ${m}m ${s}s` : `${h}h ${m}m`;
+  return s > 0 ? `${m}m ${s}s` : `${m}m`;
+};
+
+const truncateId = (id: string): string =>
+  id.length > 18 ? `${id.slice(0, 8)}···${id.slice(-6)}` : id;
 
 const deriveDryRunSuccessCount = (campaign: Campaign): number => {
   if (!campaign.dryRun) return 0;
@@ -138,32 +166,37 @@ export function HistoryPanel(): JSX.Element {
 
       <CardContent className="p-4 pt-3 space-y-3">
         {/* Filter tabs — segmented control */}
-        <div className={cn(panelTokens.toolbar, 'flex w-full overflow-x-auto p-1')}>
-          {(Object.keys(filterLabel) as HistoryFilter[]).map((key) => (
-            <button
-              key={key}
-              type="button"
-              role="tab"
-              aria-selected={filter === key}
-              onClick={() => setFilter(key)}
-              className={cn(
-                'inline-flex flex-1 items-center justify-center gap-1 whitespace-nowrap rounded-md px-2 py-1.5 text-xs font-medium tabular-nums transition-all',
-                filter === key
-                  ? 'bg-background text-foreground shadow-sm ring-1 ring-border/60'
-                  : 'text-muted-foreground hover:text-foreground'
-              )}
-            >
-              {filterLabel[key]}
-              {filterCounts[key] > 0 && (
-                <span className={cn(
-                  'rounded-full px-1.5 py-0.5 text-[9px]',
-                  filter === key ? 'bg-primary/15 text-primary' : 'bg-muted/50 text-muted-foreground'
-                )}>
-                  {filterCounts[key]}
-                </span>
-              )}
-            </button>
-          ))}
+        <div className="flex flex-wrap gap-1">
+          {(Object.keys(filterLabel) as HistoryFilter[]).map((key) => {
+            const isActive = filter === key;
+            return (
+              <button
+                key={key}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                onClick={() => setFilter(key)}
+                className={cn(
+                  'inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-medium transition-all',
+                  isActive
+                    ? filterChipClass[key]
+                    : 'border-border/28 bg-background/25 text-muted-foreground/55 hover:border-border/45 hover:text-foreground/80'
+                )}
+              >
+                {filterLabel[key]}
+                {filterCounts[key] > 0 && (
+                  <span className={cn(
+                    'rounded-full px-1.5 py-px text-[10px] tabular-nums font-semibold',
+                    isActive
+                      ? filterCountClass[key]
+                      : 'bg-muted/30 text-muted-foreground/50'
+                  )}>
+                    {filterCounts[key]}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
 
         <div className="space-y-2">
@@ -194,7 +227,7 @@ export function HistoryPanel(): JSX.Element {
               return (
                 <div
                   key={item.id}
-                  className="rounded-lg border border-border/30 bg-muted/[0.06] p-3 transition-colors hover:border-border/45 hover:bg-muted/10"
+                  className="rounded-lg border border-border/30 bg-muted/[0.08] p-3 transition-colors hover:border-border/45 hover:bg-muted/10"
                 >
                   {/* Title row */}
                   <div className="mb-1.5 flex items-start justify-between gap-2">
@@ -203,19 +236,23 @@ export function HistoryPanel(): JSX.Element {
                         {item.name || item.id}
                       </p>
                       {item.name && item.name !== item.id ? (
-                        <p className="truncate font-mono text-[10px] text-muted-foreground/70">{item.id}</p>
+                        <p className="font-mono text-[10px] text-muted-foreground/45" title={item.id}>
+                          {truncateId(item.id)}
+                        </p>
                       ) : null}
                     </div>
                     <div className="flex shrink-0 items-center gap-1.5">
                       {item.dryRun ? (
                         <Badge variant="outline" className="h-4 px-1.5 text-[9px]">thử</Badge>
                       ) : null}
-                      <Badge
-                        variant={statusVariant[item.status] ?? 'secondary'}
-                        className="whitespace-nowrap"
-                      >
-                        {statusLabel[item.status] ?? item.status}
-                      </Badge>
+                      {filter === 'all' || filter !== item.status ? (
+                        <Badge
+                          variant={statusVariant[item.status] ?? 'secondary'}
+                          className="h-5 whitespace-nowrap px-2 text-[11px]"
+                        >
+                          {statusLabel[item.status] ?? item.status}
+                        </Badge>
+                      ) : null}
                     </div>
                   </div>
 
@@ -224,11 +261,11 @@ export function HistoryPanel(): JSX.Element {
                     <span>{formatDateSafe(item.startedAt)}</span>
                     {durationSec ? (
                       <>
-                        <span className="text-border/60">·</span>
-                        <span className="tabular-nums">{durationSec}s</span>
+                        <span className="text-muted-foreground/35">·</span>
+                        <span className="tabular-nums">{formatDuration(durationSec)}</span>
                       </>
                     ) : null}
-                    <span className="text-border/60">·</span>
+                    <span className="text-muted-foreground/35">·</span>
                     <span className="tabular-nums">{item.totalTargets} nhóm</span>
                   </div>
 
@@ -238,16 +275,18 @@ export function HistoryPanel(): JSX.Element {
                       <span className="font-semibold text-foreground">{sentCount}</span>
                       <span className="ml-1 text-muted-foreground">{item.dryRun ? 'thử' : 'gửi'}</span>
                     </span>
-                    <span className="tabular-nums">
-                      <span className={cn('font-semibold', item.failedCount > 0 ? 'text-destructive' : 'text-foreground')}>
-                        {item.failedCount}
+                    {item.failedCount > 0 && (
+                      <span className="tabular-nums">
+                        <span className="font-semibold text-destructive">{item.failedCount}</span>
+                        <span className="ml-1 text-muted-foreground">lỗi</span>
                       </span>
-                      <span className="ml-1 text-muted-foreground">lỗi</span>
-                    </span>
-                    <span className="tabular-nums">
-                      <span className="font-semibold text-foreground">{item.skippedCount}</span>
-                      <span className="ml-1 text-muted-foreground">bỏ qua</span>
-                    </span>
+                    )}
+                    {item.skippedCount > 0 && (
+                      <span className="tabular-nums">
+                        <span className="font-semibold text-foreground">{item.skippedCount}</span>
+                        <span className="ml-1 text-muted-foreground">bỏ qua</span>
+                      </span>
+                    )}
                   </div>
 
                   {/* Actions */}
@@ -256,7 +295,7 @@ export function HistoryPanel(): JSX.Element {
                       <Button
                         size="sm"
                         variant="ghost"
-                        className={`${panelTokens.control} h-7 flex-1 rounded-md border-0 bg-primary/[0.14] px-2.5 text-sm font-semibold text-primary-foreground/95 hover:bg-primary/[0.22]`}
+                        className={`${panelTokens.control} h-7 flex-1 rounded-md border-0 bg-transparent px-2.5 text-sm font-medium text-foreground/70 hover:bg-muted/[0.2] hover:text-foreground`}
                         onClick={() => void onOpenCampaign(item.id)}
                       >
                         Mở
@@ -264,7 +303,7 @@ export function HistoryPanel(): JSX.Element {
                       <Button
                         size="sm"
                         variant="ghost"
-                        className={`${panelTokens.control} h-7 flex-1 rounded-md border-0 bg-transparent px-2.5 text-sm font-medium text-foreground/85 hover:bg-muted/[0.2]`}
+                        className={`${panelTokens.control} h-7 flex-1 rounded-md border-0 bg-primary/[0.10] px-2.5 text-sm font-semibold text-primary hover:bg-primary/[0.18]`}
                         onClick={() => {
                           if (hasComposerDraft && !window.confirm('Đang có nội dung soạn thảo. Ghi đè?')) return;
                           applyCampaignContent(item);

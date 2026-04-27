@@ -37,6 +37,7 @@ interface PreviewPanelProps {
 export function PreviewPanel({ mode = 'standalone' }: PreviewPanelProps): JSX.Element {
   const composer = useComposerStore();
   const { groups, selectedIds } = useGroupsStore();
+  const [isLoadingPreview, setIsLoadingPreview] = useState(() => Boolean(composer.imagePath));
   const [imageLoadFailed, setImageLoadFailed] = useState(false);
   const [imageLoadError, setImageLoadError] = useState<string | null>(null);
   const [previewImageSrc, setPreviewImageSrc] = useState('');
@@ -48,6 +49,12 @@ export function PreviewPanel({ mode = 'standalone' }: PreviewPanelProps): JSX.El
   useEffect(() => {
     setImageLoadFailed(false);
     setImageLoadError(null);
+    if (composer.imagePath) {
+      setIsLoadingPreview(true);
+      setPreviewImageSrc('');
+    } else {
+      setIsLoadingPreview(false);
+    }
   }, [composer.imagePath]);
 
   useEffect(() => {
@@ -58,8 +65,10 @@ export function PreviewPanel({ mode = 'standalone' }: PreviewPanelProps): JSX.El
       if (!composer.imagePath) {
         setPreviewImageSrc('');
         setImageLoadError(null);
+        setIsLoadingPreview(false);
         return;
       }
+      setIsLoadingPreview(true);
       try {
         const bytes = await readImageBytes(composer.imagePath);
         const mime = inferImageMimeType(composer.imagePath);
@@ -69,12 +78,14 @@ export function PreviewPanel({ mode = 'standalone' }: PreviewPanelProps): JSX.El
         setPreviewImageSrc(objectUrl);
         setImageLoadFailed(false);
         setImageLoadError(null);
+        setIsLoadingPreview(false);
       } catch (error) {
         if (active) {
           const msg = error instanceof Error ? error.message : String(error ?? '');
           const isPermission = msg.toLowerCase().includes('forbidden') || msg.toLowerCase().includes('scope');
           setPreviewImageSrc('');
           setImageLoadFailed(true);
+          setIsLoadingPreview(false);
           setImageLoadError(
             isPermission
               ? 'Không thể đọc tệp do giới hạn quyền thư mục. Khởi động lại app hoặc chọn ảnh ở thư mục khác.'
@@ -191,28 +202,34 @@ export function PreviewPanel({ mode = 'standalone' }: PreviewPanelProps): JSX.El
                 embedded ? 'min-h-[200px] p-2' : 'min-h-0 flex-1 p-3'
               )}
             >
-              {previewImageSrc && !imageLoadFailed ? (
+              {previewImageSrc && !imageLoadFailed && !isLoadingPreview ? (
                 <img
                   src={previewImageSrc}
                   alt="Ảnh xem trước"
                   className="block h-auto max-h-full max-w-full shrink-0 object-contain"
-                  onError={() => setImageLoadFailed(true)}
+                  onError={() => {
+                    if (!isLoadingPreview) setImageLoadFailed(true);
+                  }}
                   onLoad={() => setImageLoadFailed(false)}
                 />
               ) : (
                 <div className="flex h-full w-full flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border/50 p-4 text-center">
                   <p className="text-sm text-muted-foreground">
-                    {composer.imagePath ? 'Không thể xem trước ảnh' : 'Chưa chọn ảnh'}
+                    {isLoadingPreview
+                      ? 'Đang tải ảnh...'
+                      : composer.imagePath
+                        ? 'Không thể xem trước ảnh'
+                        : 'Chưa chọn ảnh'}
                   </p>
-                  {composer.imagePath ? (
+                  {composer.imagePath && !isLoadingPreview ? (
                     <p className="max-w-full truncate font-mono text-xs text-muted-foreground/70">
                       {composer.imagePath}
                     </p>
                   ) : null}
-                  {composer.imagePath && imageLoadError ? (
+                  {composer.imagePath && !isLoadingPreview && imageLoadError ? (
                     <p className="max-w-full text-xs text-muted-foreground/70">{imageLoadError}</p>
                   ) : null}
-                  {composer.imagePath ? (
+                  {composer.imagePath && !isLoadingPreview ? (
                     <Button
                       type="button"
                       size="sm"
@@ -221,6 +238,8 @@ export function PreviewPanel({ mode = 'standalone' }: PreviewPanelProps): JSX.El
                       onClick={() => {
                         setImageLoadFailed(false);
                         setImageLoadError(null);
+                        setPreviewImageSrc('');
+                        setIsLoadingPreview(true);
                         setPreviewReloadToken((prev) => prev + 1);
                       }}
                     >
